@@ -9,7 +9,7 @@ type ElementRole =
 
 type Priority = 1 | 2 | 3;
 
-interface AdElement {
+export interface AdElement {
   id: string;
   type: ElementType;
   role: ElementRole;

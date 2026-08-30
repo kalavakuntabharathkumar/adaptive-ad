@@ -12,7 +12,7 @@ interface SafeArea {
   left: number;
 }
 
-interface SurfaceProfile extends Dimensions {
+export interface SurfaceProfile extends Dimensions {
   
   safeArea?: SafeArea;
   minTapTarget?: number;
