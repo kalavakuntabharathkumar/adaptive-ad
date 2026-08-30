@@ -1,122 +1,272 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState } from "react";
+import { adSpec } from "./spec";
+import { surfaces } from "./surfaces";
+import { resolveLayout } from "./resolver";
+import "./App.css";
 
-function App() {
-  const [count, setCount] = useState(0)
+type SurfaceName = keyof typeof surfaces;
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+const surfaceLabels: Record<SurfaceName, string> = {
+  mobilePortrait: "Mobile Portrait",
+  mobileLandscape: "Mobile Landscape",
+  broadcastLowerThird: "Broadcast Lower Third",
+  retailKiosk: "Square Kiosk",
+  constraintTest: "Constraint Test",
+};
 
-      <div className="ticks"></div>
+function renderElement(type: string, role: string, content: string) {
+  if (type === "text" && role === "primary")
+    return <div className="headline">{content}</div>;
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+  if (type === "text" && role === "secondary")
+    return <div className="secondary-text">{content}</div>;
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+  if (type === "image")
+    return (
+      <img
+        className={role === "branding" ? "logo" : "product-image"}
+        src={content}
+        alt={role === "branding" ? "Brand logo" : "Product"}
+      />
+    );
+
+  if (type === "button")
+    return <button className="cta">{content}</button>;
+
+  return <div>{content}</div>;
 }
 
-export default App
+function App() {
+  const [selectedSurface, setSelectedSurface] =
+    useState<SurfaceName>("mobilePortrait");
+
+  const surface = surfaces[selectedSurface];
+  const resolvedLayout = resolveLayout(adSpec.elements, surface);
+
+  const visibleCount = resolvedLayout.elements.filter(
+    (element) => element.visible
+  ).length;
+
+  const hiddenCount = resolvedLayout.elements.length - visibleCount;
+
+  return (
+    <main className="app">
+      <header className="topbar">
+        <div>
+          <div className="eyebrow">CONSTRAINT-BASED UI SYSTEM</div>
+          <h1>Adaptive Layout Engine</h1>
+          <p>One advertisement. Every surface. One resolution algorithm.</p>
+        </div>
+
+        <div className="engine-status">
+          <span className="status-dot" />
+          Resolver Active
+        </div>
+      </header>
+
+      <section className="surface-picker">
+        <div className="picker-heading">
+          <span>SELECT SURFACE</span>
+          <small>Same AdSpec → New Resolution</small>
+        </div>
+
+        <div className="surface-options">
+          {(Object.keys(surfaceLabels) as SurfaceName[]).map((name) => (
+            <button
+              key={name}
+              className={`surface-option ${
+                selectedSurface === name ? "active" : ""
+              }`}
+              onClick={() => setSelectedSurface(name)}
+            >
+              <span className="surface-icon">
+                {name === "mobilePortrait" && "▯"}
+                {name === "mobileLandscape" && "▭"}
+                {name === "broadcastLowerThird" && "▰"}
+                {name === "retailKiosk" && "□"}
+                {name === "constraintTest" && "!"}
+              </span>
+
+              <span>
+                <strong>{surfaceLabels[name]}</strong>
+                <small>
+                  {surfaces[name].width} × {surfaces[name].height}
+                </small>
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="dashboard">
+        <div className="preview-panel">
+          <div className="panel-header">
+            <div>
+              <span className="panel-label">LIVE PREVIEW</span>
+              <h2>{surfaceLabels[selectedSurface]}</h2>
+            </div>
+
+            <span className="dimension-badge">
+              {surface.width} × {surface.height}
+            </span>
+          </div>
+
+          <div className="preview-stage">
+            <div
+              className="surface"
+              style={{
+                aspectRatio: `${surface.width} / ${surface.height}`,
+              }}
+            >
+              {resolvedLayout.elements.map((element) => {
+                const specElement = adSpec.elements.find(
+                  (item) => item.id === element.id
+                );
+
+                if (!specElement) return null;
+
+                const left = (element.box.x / surface.width) * 100;
+                const top = (element.box.y / surface.height) * 100;
+                const width =
+                  (element.box.width / surface.width) * 100;
+                const height =
+                  (element.box.height / surface.height) * 100;
+
+                return (
+                  <div
+                    key={element.id}
+                    className={`ad-element ${specElement.role} ${
+                      element.visible ? "" : "hidden-element"
+                    }`}
+                    style={{
+                      left: `${left}%`,
+                      top: `${top}%`,
+                      width: `${width}%`,
+                      height: `${height}%`,
+                    }}
+                  >
+                    {renderElement(
+                      specElement.type,
+                      specElement.role,
+                      specElement.content
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <aside className="info-panel">
+          <div className="info-card highlight">
+            <span className="panel-label">RESOLUTION</span>
+
+            <div className="resolution-number">
+              {visibleCount}
+              <span>/ {resolvedLayout.elements.length}</span>
+            </div>
+
+            <p>elements currently visible</p>
+
+            {hiddenCount > 0 && (
+              <div className="degradation-alert">
+                <span>!</span>
+                {hiddenCount} element{hiddenCount > 1 ? "s" : ""} degraded
+              </div>
+            )}
+          </div>
+
+          <div className="info-card">
+            <span className="panel-label">SURFACE CONSTRAINTS</span>
+
+            <div className="constraint-grid">
+              <div>
+                <small>Dimensions</small>
+                <strong>
+                  {surface.width} × {surface.height}
+                </strong>
+              </div>
+
+              <div>
+                <small>Min text</small>
+                <strong>{surface.minTextSize ?? "—"} px</strong>
+              </div>
+
+              <div>
+                <small>Tap target</small>
+                <strong>
+                  {surface.minTapTarget
+                    ? `${surface.minTapTarget}px`
+                    : "—"}
+                </strong>
+              </div>
+
+              <div>
+                <small>Viewing</small>
+                <strong>{surface.viewingDistance ?? "—"}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="info-card">
+            <span className="panel-label">RESOLVED ELEMENTS</span>
+
+            <div className="element-list">
+              {resolvedLayout.elements.map((element) => (
+                <div
+                  className={`element-row ${
+                    element.visible ? "" : "is-hidden"
+                  }`}
+                  key={element.id}
+                >
+                  <span
+                    className={`element-dot ${
+                      element.visible ? "visible" : "hidden"
+                    }`}
+                  />
+
+                  <div className="element-name">
+                    <strong>{element.id}</strong>
+                    <small>
+                      {Math.round(element.box.width)} ×{" "}
+                      {Math.round(element.box.height)}
+                    </small>
+                  </div>
+
+                  <span className="element-state">
+                    {element.visible ? "VISIBLE" : "HIDDEN"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section className="architecture-strip">
+        <div>
+          <span className="panel-label">RESOLUTION PIPELINE</span>
+
+          <div className="pipeline">
+            <span>AdSpec</span>
+            <b>→</b>
+            <span>Surface Profile</span>
+            <b>→</b>
+            <span>Constraint Resolver</span>
+            <b>→</b>
+            <span>Resolved Layout</span>
+            <b>→</b>
+            <span>Renderer</span>
+          </div>
+        </div>
+
+        <div className="architecture-note">
+          <span>✓</span>
+          No surface-specific layout code
+        </div>
+      </section>
+    </main>
+  );
+}
+
+export default App;

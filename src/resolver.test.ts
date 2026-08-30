@@ -1,3 +1,4 @@
+
 import { resolveLayout } from "./resolver";
 import { surfaces } from "./surfaces";
 import { adSpec } from "./spec";
@@ -5,7 +6,7 @@ import { adSpec } from "./spec";
 function assert(
   condition: boolean,
   message: string
-) {
+): void {
   if (!condition) {
     throw new Error(`TEST FAILED: ${message}`);
   }
@@ -35,7 +36,7 @@ function boxesOverlap(
 
 function validateSurface(
   name: keyof typeof surfaces
-) {
+): void {
   const surface = surfaces[name];
 
   const result = resolveLayout(
@@ -62,8 +63,12 @@ function validateSurface(
     surface.height - safeArea.bottom;
 
   for (const element of result.elements) {
-    const { x, y, width, height } =
-      element.box;
+    const {
+      x,
+      y,
+      width,
+      height,
+    } = element.box;
 
     assert(
       width >= 0,
@@ -126,7 +131,7 @@ function validateSurface(
   console.log(`PASS: ${name}`);
 }
 
-function validatePortraitSurface() {
+function validatePortraitSurface(): void {
   const result = resolveLayout(
     adSpec.elements,
     surfaces.mobilePortrait
@@ -137,7 +142,11 @@ function validatePortraitSurface() {
       (element) => element.visible
     );
 
-  for (let index = 1; index < visibleElements.length; index++) {
+  for (
+    let index = 1;
+    index < visibleElements.length;
+    index++
+  ) {
     assert(
       visibleElements[index].box.y >=
         visibleElements[index - 1].box.y,
@@ -148,7 +157,7 @@ function validatePortraitSurface() {
   console.log("PASS: portrait direction");
 }
 
-function validateLandscapeSurface() {
+function validateLandscapeSurface(): void {
   const result = resolveLayout(
     adSpec.elements,
     surfaces.mobileLandscape
@@ -159,7 +168,11 @@ function validateLandscapeSurface() {
       (element) => element.visible
     );
 
-  for (let index = 1; index < visibleElements.length; index++) {
+  for (
+    let index = 1;
+    index < visibleElements.length;
+    index++
+  ) {
     assert(
       visibleElements[index].box.x >=
         visibleElements[index - 1].box.x,
@@ -170,7 +183,175 @@ function validateLandscapeSurface() {
   console.log("PASS: landscape direction");
 }
 
-function validateBalancedSurface() {
+function validateLandscapeAdaptiveComposition(): void {
+  const testSurfaces = [
+    {
+      width: 480,
+      height: 320,
+      safeArea: {
+        top: 16,
+        right: 16,
+        bottom: 16,
+        left: 16,
+      },
+      minTapTarget: 44,
+      minTextSize: 16,
+      allowAdaptiveLandscapeComposition: true,
+    },
+
+    {
+      width: 800,
+      height: 320,
+      safeArea: {
+        top: 16,
+        right: 16,
+        bottom: 16,
+        left: 16,
+      },
+      minTapTarget: 44,
+      minTextSize: 16,
+      allowAdaptiveLandscapeComposition: true,
+    },
+
+    {
+      width: 640,
+      height: 240,
+      safeArea: {
+        top: 12,
+        right: 12,
+        bottom: 12,
+        left: 12,
+      },
+      minTapTarget: 44,
+      minTextSize: 16,
+      allowAdaptiveLandscapeComposition: true,
+    },
+
+    {
+      width: 1200,
+      height: 600,
+      safeArea: {
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+      },
+      minTapTarget: 44,
+      minTextSize: 16,
+      allowAdaptiveLandscapeComposition: true,
+    },
+  ];
+
+  for (const surface of testSurfaces) {
+    const result = resolveLayout(
+      adSpec.elements,
+      surface
+    );
+
+    const visible =
+      result.elements.filter(
+        (element) => element.visible
+      );
+
+    const logo =
+      result.elements.find(
+        (element) => element.id === "logo"
+      );
+
+    assert(
+      logo?.visible === true,
+      "feasible adaptive landscape should keep logo visible"
+    );
+
+    const safeArea =
+      surface.safeArea;
+
+    const right =
+      surface.width - safeArea.right;
+
+    const bottom =
+      surface.height - safeArea.bottom;
+
+    for (const element of visible) {
+      assert(
+        element.box.x >= safeArea.left,
+        "adaptive landscape must respect left safe area"
+      );
+
+      assert(
+        element.box.y >= safeArea.top,
+        "adaptive landscape must respect top safe area"
+      );
+
+      assert(
+        element.box.x +
+          element.box.width <=
+          right,
+        "adaptive landscape must respect right safe area"
+      );
+
+      assert(
+        element.box.y +
+          element.box.height <=
+          bottom,
+        "adaptive landscape must respect bottom safe area"
+      );
+    }
+
+    for (
+      let first = 0;
+      first < visible.length;
+      first++
+    ) {
+      for (
+        let second = first + 1;
+        second < visible.length;
+        second++
+      ) {
+        assert(
+          !boxesOverlap(
+            visible[first].box,
+            visible[second].box
+          ),
+          "adaptive landscape elements must not overlap"
+        );
+      }
+    }
+  }
+
+  const tooSmall = resolveLayout(
+    adSpec.elements,
+    {
+      width: 100,
+      height: 80,
+      safeArea: {
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+      },
+      minTapTarget: 44,
+      minTextSize: 16,
+      allowAdaptiveLandscapeComposition: true,
+    }
+  );
+
+  const smallLogo =
+    tooSmall.elements.find(
+      (element) => element.id === "logo"
+    );
+
+  assert(
+    smallLogo?.visible === false,
+    "genuinely infeasible landscape should still remove the logo"
+  );
+
+  console.log(
+    "PASS: adaptive landscape composition"
+  );
+}
+
+function validateBalancedSurface(): void {
   const result = resolveLayout(
     adSpec.elements,
     surfaces.retailKiosk
@@ -184,7 +365,7 @@ function validateBalancedSurface() {
   console.log("PASS: balanced surface");
 }
 
-function validateEmptyLayout() {
+function validateEmptyLayout(): void {
   const result = resolveLayout(
     [],
     surfaces.mobilePortrait
@@ -198,7 +379,7 @@ function validateEmptyLayout() {
   console.log("PASS: empty layout");
 }
 
-function validateSingleElement() {
+function validateSingleElement(): void {
   const result = resolveLayout(
     [adSpec.elements[0]],
     surfaces.mobilePortrait
@@ -217,9 +398,10 @@ function validateSingleElement() {
   console.log("PASS: single element");
 }
 
-function validateManyElements() {
+function validateManyElements(): void {
   const manyElements = [
     ...adSpec.elements,
+
     ...adSpec.elements.map(
       (element, index) => ({
         ...element,
@@ -242,7 +424,7 @@ function validateManyElements() {
   console.log("PASS: many elements");
 }
 
-function validateNoSafeArea() {
+function validateNoSafeArea(): void {
   const surfaceWithoutSafeArea = {
     width: 1080,
     height: 1080,
@@ -267,13 +449,16 @@ function validateNoSafeArea() {
     }
   }
 
-  console.log("PASS: no safe-area surface");
+  console.log(
+    "PASS: no safe-area surface"
+  );
 }
 
-function validateMinimumSizes() {
+function validateMinimumSizes(): void {
   const verySmallSurface = {
     width: 100,
     height: 100,
+
     safeArea: {
       top: 0,
       right: 0,
@@ -302,10 +487,11 @@ function validateMinimumSizes() {
   console.log("PASS: minimum sizes");
 }
 
-function validatePriorityDegradation() {
+function validatePriorityDegradation(): void {
   const verySmallSurface = {
     width: 100,
     height: 100,
+
     safeArea: {
       top: 0,
       right: 0,
@@ -335,7 +521,7 @@ function validatePriorityDegradation() {
   );
 }
 
-function validateNoNegativeCoordinates() {
+function validateNoNegativeCoordinates(): void {
   const testSurfaces = [
     surfaces.mobilePortrait,
     surfaces.mobileLandscape,
@@ -369,7 +555,7 @@ function validateNoNegativeCoordinates() {
   );
 }
 
-function validateNoOverflow() {
+function validateNoOverflow(): void {
   const testSurfaces = [
     surfaces.mobilePortrait,
     surfaces.mobileLandscape,
@@ -396,14 +582,18 @@ function validateNoOverflow() {
       }
 
       assert(
-        element.box.x + element.box.width <=
-          surface.width - safeArea.right,
+        element.box.x +
+          element.box.width <=
+          surface.width -
+            safeArea.right,
         "visible element must not overflow horizontally"
       );
 
       assert(
-        element.box.y + element.box.height <=
-          surface.height - safeArea.bottom,
+        element.box.y +
+          element.box.height <=
+          surface.height -
+            safeArea.bottom,
         "visible element must not overflow vertically"
       );
     }
@@ -412,10 +602,11 @@ function validateNoOverflow() {
   console.log("PASS: no overflow");
 }
 
-function validateGeneralizedAlgorithm() {
+function validateGeneralizedAlgorithm(): void {
   const newSurface = {
     width: 700,
     height: 500,
+
     safeArea: {
       top: 10,
       right: 10,
@@ -437,24 +628,28 @@ function validateGeneralizedAlgorithm() {
   for (const element of result.elements) {
     if (element.visible) {
       assert(
-        element.box.x >= newSurface.safeArea.left,
+        element.box.x >=
+          newSurface.safeArea.left,
         "generalized layout must respect left safe area"
       );
 
       assert(
-        element.box.y >= newSurface.safeArea.top,
+        element.box.y >=
+          newSurface.safeArea.top,
         "generalized layout must respect top safe area"
       );
 
       assert(
-        element.box.x + element.box.width <=
+        element.box.x +
+          element.box.width <=
           newSurface.width -
             newSurface.safeArea.right,
         "generalized layout must respect right safe area"
       );
 
       assert(
-        element.box.y + element.box.height <=
+        element.box.y +
+          element.box.height <=
           newSurface.height -
             newSurface.safeArea.bottom,
         "generalized layout must respect bottom safe area"
@@ -467,6 +662,10 @@ function validateGeneralizedAlgorithm() {
   );
 }
 
+/*
+ * Run all validation checks.
+ */
+
 validateSurface("mobilePortrait");
 validateSurface("mobileLandscape");
 validateSurface("broadcastLowerThird");
@@ -474,6 +673,7 @@ validateSurface("retailKiosk");
 
 validatePortraitSurface();
 validateLandscapeSurface();
+validateLandscapeAdaptiveComposition();
 validateBalancedSurface();
 
 validateEmptyLayout();
