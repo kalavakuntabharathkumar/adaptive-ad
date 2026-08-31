@@ -40,11 +40,13 @@ const MIN_SAFE_DIMENSION = 1;
 const EPSILON = 0.5;
 
 /*
- * Minimum horizontal space required for the CTA label.
+ * Minimum horizontal space required for CTA content.
  *
- * The physical tap target guarantees interaction size,
- * but it does not guarantee enough width for the text
- * "APPLY NOW".
+ * This is a generic content constraint. It is intentionally
+ * independent of the composition direction or surface name.
+ *
+ * Physical tap-target constraints and content constraints are
+ * combined when calculating the element's final minimum size.
  */
 const MIN_CTA_TEXT_WIDTH = 96;
 
@@ -107,6 +109,10 @@ function getLayoutDirection(
       MIN_SAFE_DIMENSION
     );
 
+  /*
+   * These thresholds are geometry-driven composition
+   * heuristics, not surface-specific layout rules.
+   */
   if (aspectRatio < 0.85) {
     return "vertical";
   }
@@ -122,16 +128,6 @@ function getPreferredFraction(
   element: AdElement,
   direction: LayoutDirection
 ): ElementSize {
-  /*
-   * VERTICAL SURFACES
-   *
-   * Branding is intentionally compact.
-   *
-   * The logo does not need the same vertical space
-   * as the headline, product image, or CTA. Keeping
-   * it around 5% of the usable height leaves room
-   * for the other important elements.
-   */
   if (direction === "vertical") {
     switch (element.role) {
       case "hero":
@@ -257,13 +253,6 @@ function getMinimumFraction(
           height: 0.07,
         };
 
-      /*
-       * Logo can shrink significantly before it has
-       * to be removed by priority degradation.
-       *
-       * This is important because branding is priority 3.
-       * We want to try a smaller logo before hiding it.
-       */
       case "branding":
         return {
           width: 0.10,
@@ -373,6 +362,12 @@ function getMinimumTapHeight(
   return surface.minTapTarget;
 }
 
+/*
+ * Physical constraints only.
+ *
+ * These are constraints imposed by the rendering surface,
+ * such as minimum text size and minimum interactive target size.
+ */
 function getMinimumPhysicalSize(
   element: AdElement,
   surface: SurfaceProfile
@@ -410,6 +405,77 @@ function getMinimumPhysicalSize(
   };
 }
 
+/*
+ * Content constraints.
+ *
+ * These are independent from physical surface constraints.
+ * This makes CTA content protection work identically in
+ * vertical, horizontal, balanced, and adaptive compositions.
+ */
+function getMinimumContentSize(
+  element: AdElement
+): ElementSize {
+  if (
+    element.type === "button" &&
+    element.role === "action"
+  ) {
+    return {
+      width: MIN_CTA_TEXT_WIDTH,
+      height: 1,
+    };
+  }
+
+  return {
+    width: 1,
+    height: 1,
+  };
+}
+
+/*
+ * Combines all minimum constraints:
+ *
+ * fractional minimum
+ *        +
+ * physical minimum
+ *        +
+ * content minimum
+ *        ↓
+ * final minimum size
+ */
+function getMinimumElementSize(
+  element: AdElement,
+  region: UsableArea | Region,
+  minimumFraction: ElementSize,
+  surface: SurfaceProfile
+): ElementSize {
+  const physicalMinimum =
+    getMinimumPhysicalSize(
+      element,
+      surface
+    );
+
+  const contentMinimum =
+    getMinimumContentSize(
+      element
+    );
+
+  return {
+    width: Math.max(
+      region.width *
+        minimumFraction.width,
+      physicalMinimum.width,
+      contentMinimum.width
+    ),
+
+    height: Math.max(
+      region.height *
+        minimumFraction.height,
+      physicalMinimum.height,
+      contentMinimum.height
+    ),
+  };
+}
+
 function createSizedElements(
   elements: AdElement[],
   region: UsableArea | Region,
@@ -430,27 +496,13 @@ function createSizedElements(
           direction
         );
 
-      const physicalMinimum =
-        getMinimumPhysicalSize(
+      const minimumSize =
+        getMinimumElementSize(
           element,
+          region,
+          minimum,
           surface
         );
-
-      const minimumWidth =
-        element.type === "button" &&
-        element.role === "action" &&
-        direction === "horizontal"
-          ? Math.max(
-              region.width *
-                minimum.width,
-              physicalMinimum.width,
-              MIN_CTA_TEXT_WIDTH
-            )
-          : Math.max(
-              region.width *
-                minimum.width,
-              physicalMinimum.width
-            );
 
       return {
         element,
@@ -465,15 +517,7 @@ function createSizedElements(
             preferred.height,
         },
 
-        minimum: {
-          width: minimumWidth,
-
-          height: Math.max(
-            region.height *
-              minimum.height,
-            physicalMinimum.height
-          ),
-        },
+        minimum: minimumSize,
       };
     }
   );
@@ -537,13 +581,7 @@ function fitMainAxis(
   /*
    * Higher numeric priority means lower importance.
    *
-   * Therefore low-priority elements shrink first.
-   *
-   * Example:
-   *
-   * priority 3 -> logo
-   * priority 2 -> CTA / secondary text
-   * priority 1 -> headline / hero
+   * Therefore lower-priority elements shrink first.
    */
   const ordered =
     [...items].sort(
@@ -761,6 +799,39 @@ function satisfiesPhysicalConstraints(
   );
 }
 
+function satisfiesCtaTextWidth(
+  elements: ResolvedElement[],
+  sourceElements: AdElement[]
+): boolean {
+  return elements.every(
+    (resolved) => {
+      const source =
+        sourceElements.find(
+          (element) =>
+            element.id ===
+            resolved.id
+        );
+
+      if (!source) {
+        return false;
+      }
+
+      if (
+        source.type !== "button" ||
+        source.role !== "action"
+      ) {
+        return true;
+      }
+
+      return (
+        resolved.box.width >=
+        MIN_CTA_TEXT_WIDTH -
+          EPSILON
+      );
+    }
+  );
+}
+
 function isFeasible(
   resolved: ResolvedElement[],
   sourceElements: AdElement[],
@@ -804,6 +875,15 @@ function isFeasible(
       resolved,
       sourceElements,
       surface
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    !satisfiesCtaTextWidth(
+      resolved,
+      sourceElements
     )
   ) {
     return false;
@@ -1561,7 +1641,11 @@ function resolveInformationGroup(
   return sizes.map(
     (item) => {
       const width =
-        region.width;
+        clamp(
+          item.size.width,
+          item.minimum.width,
+          region.width
+        );
 
       const height =
         clamp(
@@ -1570,11 +1654,18 @@ function resolveInformationGroup(
           region.height
         );
 
+      const x =
+        region.x +
+        (
+          region.width -
+          width
+        ) / 2;
+
       const result =
         createResolvedElement(
           item.element,
           {
-            x: region.x,
+            x,
             y,
             width,
             height,
@@ -1794,7 +1885,6 @@ function resolveActionGroup(
   );
 }
 
-
 function resolveAdaptiveLandscape(
   elements: AdElement[],
   area: UsableArea,
@@ -1852,22 +1942,14 @@ function resolveAdaptiveLandscape(
   const unassigned =
     elements.filter(
       (element) =>
-        !assigned.has(element.id)
+        !assigned.has(
+          element.id
+        )
     );
 
   if (unassigned.length > 0) {
     return null;
   }
-
-  /*
-   * Adaptive landscape is a two-dimensional composition:
-   *
-   *   information | hero | actions
-   *
-   * The information and action groups may stack vertically
-   * inside their columns. This avoids the false assumption
-   * that every element must occupy its own horizontal slot.
-   */
 
   const informationSizes =
     createSizedElements(
@@ -1987,11 +2069,6 @@ function resolveAdaptiveLandscape(
   let actionWidth =
     actionPreferredWidth;
 
-  /*
-   * Empty groups do not need a column. The hero always has
-   * one column. Start with preferred widths and shrink the
-   * lower-priority groups first.
-   */
   const preferredTotal =
     informationWidth +
     heroWidth +
@@ -2088,11 +2165,6 @@ function resolveAdaptiveLandscape(
       actualTotalWidth
   );
 
-  /*
-   * Give unused width to the information column when it
-   * exists. This preserves the hero's protected width and
-   * keeps the action column compact.
-   */
   if (information.length > 0) {
     informationWidth +=
       extraWidth;
@@ -2465,6 +2537,10 @@ function resolveAdaptiveLandscape(
       sorted,
       elements,
       surface
+    ) ||
+    !satisfiesCtaTextWidth(
+      sorted,
+      elements
     )
   ) {
     return null;
@@ -2875,14 +2951,13 @@ export function resolveLayout(
    * Constraint-based degradation:
    *
    * 1. Try all elements.
-   * 2. If they do not fit, shrink lower-priority
-   *    elements toward their minimum sizes.
-   * 3. If still infeasible, remove the lowest-priority
-   *    element.
-   * 4. Try again.
+   * 2. Shrink lower-priority elements toward minimum sizes.
+   * 3. Recalculate the composition.
+   * 4. If still infeasible, remove the lowest-priority element.
+   * 5. Recalculate again.
    *
-   * This means the logo gets a chance to shrink
-   * before it gets hidden.
+   * This allows low-priority elements such as branding to
+   * shrink before they are removed.
    */
   while (
     remaining.length > 0
@@ -2949,8 +3024,8 @@ export function resolveLayout(
   /*
    * Final safety fallback:
    *
-   * Keep the highest-priority element if the
-   * complete composition cannot be resolved.
+   * Keep the highest-priority element if the complete
+   * composition cannot be resolved.
    */
   if (
     area.width > 0 &&
@@ -2984,6 +3059,10 @@ export function resolveLayout(
         fallback,
         [highestPriority],
         surface
+      ) &&
+      satisfiesCtaTextWidth(
+        fallback,
+        [highestPriority]
       )
     ) {
       const hidden =

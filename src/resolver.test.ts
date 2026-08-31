@@ -1,4 +1,3 @@
-
 import { resolveLayout } from "./resolver";
 import { surfaces } from "./surfaces";
 import { adSpec } from "./spec";
@@ -602,10 +601,69 @@ function validateNoOverflow(): void {
   console.log("PASS: no overflow");
 }
 
-function validateGeneralizedAlgorithm(): void {
-  const newSurface = {
+/*
+ * Explicit no-overlap validation.
+ *
+ * This is kept separate from the individual surface
+ * tests so that the final test output clearly proves
+ * that the resolver does not create overlapping
+ * visible elements.
+ */
+function validateNoOverlap(): void {
+  const testSurfaces = [
+    surfaces.mobilePortrait,
+    surfaces.mobileLandscape,
+    surfaces.broadcastLowerThird,
+    surfaces.retailKiosk,
+  ];
+
+  for (const surface of testSurfaces) {
+    const result = resolveLayout(
+      adSpec.elements,
+      surface
+    );
+
+    const visibleElements =
+      result.elements.filter(
+        (element) => element.visible
+      );
+
+    for (
+      let firstIndex = 0;
+      firstIndex < visibleElements.length;
+      firstIndex++
+    ) {
+      for (
+        let secondIndex = firstIndex + 1;
+        secondIndex < visibleElements.length;
+        secondIndex++
+      ) {
+        assert(
+          !boxesOverlap(
+            visibleElements[firstIndex].box,
+            visibleElements[secondIndex].box
+          ),
+          "visible elements must not overlap"
+        );
+      }
+    }
+  }
+
+  console.log("PASS: no overlap");
+}
+
+/*
+ * Explicit unknown fifth-surface validation.
+ *
+ * This surface is intentionally NOT taken from the
+ * predefined surfaces object. It proves that the
+ * resolver can consume a new surface profile without
+ * requiring a new surface-specific layout branch.
+ */
+function validateUnknownFifthSurface(): void {
+  const unknownFifthSurface = {
     width: 700,
-    height: 500,
+    height: 300,
 
     safeArea: {
       top: 10,
@@ -613,53 +671,81 @@ function validateGeneralizedAlgorithm(): void {
       bottom: 10,
       left: 10,
     },
+
+    minTextSize: 28,
+    minTapTarget: 48,
   };
 
   const result = resolveLayout(
     adSpec.elements,
-    newSurface
+    unknownFifthSurface
   );
 
   assert(
     result.elements.length > 0,
-    "new surface should work without special-case layout logic"
+    "unknown fifth surface should produce a layout"
   );
 
   for (const element of result.elements) {
-    if (element.visible) {
-      assert(
-        element.box.x >=
-          newSurface.safeArea.left,
-        "generalized layout must respect left safe area"
-      );
+    if (!element.visible) {
+      continue;
+    }
 
-      assert(
-        element.box.y >=
-          newSurface.safeArea.top,
-        "generalized layout must respect top safe area"
-      );
+    assert(
+      element.box.x >=
+        unknownFifthSurface.safeArea.left,
+      "unknown fifth surface must respect left safe area"
+    );
 
-      assert(
-        element.box.x +
-          element.box.width <=
-          newSurface.width -
-            newSurface.safeArea.right,
-        "generalized layout must respect right safe area"
-      );
+    assert(
+      element.box.y >=
+        unknownFifthSurface.safeArea.top,
+      "unknown fifth surface must respect top safe area"
+    );
 
+    assert(
+      element.box.x +
+        element.box.width <=
+        unknownFifthSurface.width -
+          unknownFifthSurface.safeArea.right,
+      "unknown fifth surface must respect right safe area"
+    );
+
+    assert(
+      element.box.y +
+        element.box.height <=
+        unknownFifthSurface.height -
+          unknownFifthSurface.safeArea.bottom,
+      "unknown fifth surface must respect bottom safe area"
+    );
+  }
+
+  const visibleElements =
+    result.elements.filter(
+      (element) => element.visible
+    );
+
+  for (
+    let firstIndex = 0;
+    firstIndex < visibleElements.length;
+    firstIndex++
+  ) {
+    for (
+      let secondIndex = firstIndex + 1;
+      secondIndex < visibleElements.length;
+      secondIndex++
+    ) {
       assert(
-        element.box.y +
-          element.box.height <=
-          newSurface.height -
-            newSurface.safeArea.bottom,
-        "generalized layout must respect bottom safe area"
+        !boxesOverlap(
+          visibleElements[firstIndex].box,
+          visibleElements[secondIndex].box
+        ),
+        "unknown fifth surface must not contain overlapping elements"
       );
     }
   }
 
-  console.log(
-    "PASS: generalized algorithm"
-  );
+  console.log("PASS: unknown fifth surface");
 }
 
 /*
@@ -686,8 +772,9 @@ validatePriorityDegradation();
 
 validateNoNegativeCoordinates();
 validateNoOverflow();
+validateNoOverlap();
 
-validateGeneralizedAlgorithm();
+validateUnknownFifthSurface();
 
 console.log(
   "All resolver validation checks passed."
