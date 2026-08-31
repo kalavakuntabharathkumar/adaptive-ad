@@ -1,32 +1,58 @@
-# React + TypeScript + Vite
+# Adaptive Layout Engine
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A constraint-based layout engine that takes one advertisement specification and adapts it across different surfaces and screen sizes.
 
-Currently, two official plugins are available:
+The main idea is simple:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+> Define the advertisement once. Let the layout engine figure out how it should fit on each surface.
 
-## React Compiler
+Instead of creating a separate layout for mobile, broadcast, kiosk, etc., the project uses a shared `AdSpec`, surface constraints, and a resolution algorithm to produce a `ResolvedLayout`.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the Oxlint configuration
+## What this project does
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+An advertisement contains different elements such as:
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
+- Headline
+- Product name
+- Product image
+- Call-to-action button
+- Logo
+- Price
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Each element has information about its:
+
+- Type
+- Role
+- Priority
+- Content
+
+The same advertisement is then passed to the layout engine together with the constraints of the target surface.
+
+For example, the same ad can be resolved for:
+
+- Mobile portrait
+- Mobile landscape
+- Broadcast lower third
+- Square retail kiosk
+- A deliberately small constraint-test surface
+
+The engine determines where the elements should go, how much space they can use, and which elements need to be hidden when the available space becomes too small.
+
+---
+
+## The core idea
+
+The project follows this pipeline:
+
+```text
+AdSpec
+   ↓
+Surface Profile
+   ↓
+Constraint Resolver
+   ↓
+Resolved Layout
+   ↓
+Renderer
