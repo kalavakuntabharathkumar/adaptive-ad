@@ -2,6 +2,7 @@ import { useState } from "react";
 import { adSpec } from "./spec";
 import { surfaces } from "./surfaces";
 import { resolveLayout } from "./resolver";
+import { renderAdToDom } from "./render-dom";
 import "./App.css";
 
 type SurfaceName = keyof typeof surfaces;
@@ -13,28 +14,6 @@ const surfaceLabels: Record<SurfaceName, string> = {
   retailKiosk: "Square Kiosk",
   constraintTest: "Constraint Test",
 };
-
-function renderElement(type: string, role: string, content: string) {
-  if (type === "text" && role === "primary")
-    return <div className="headline">{content}</div>;
-
-  if (type === "text" && role === "secondary")
-    return <div className="secondary-text">{content}</div>;
-
-  if (type === "image")
-    return (
-      <img
-        className={role === "branding" ? "logo" : "product-image"}
-        src={content}
-        alt={role === "branding" ? "Brand logo" : "Product"}
-      />
-    );
-
-  if (type === "button")
-    return <button className="cta">{content}</button>;
-
-  return <div>{content}</div>;
-}
 
 function App() {
   const [selectedSurface, setSelectedSurface] =
@@ -118,41 +97,7 @@ function App() {
                 aspectRatio: `${surface.width} / ${surface.height}`,
               }}
             >
-              {resolvedLayout.elements.map((element) => {
-                const specElement = adSpec.elements.find(
-                  (item) => item.id === element.id
-                );
-
-                if (!specElement) return null;
-
-                const left = (element.box.x / surface.width) * 100;
-                const top = (element.box.y / surface.height) * 100;
-                const width =
-                  (element.box.width / surface.width) * 100;
-                const height =
-                  (element.box.height / surface.height) * 100;
-
-                return (
-                  <div
-                    key={element.id}
-                    className={`ad-element ${specElement.role} ${
-                      element.visible ? "" : "hidden-element"
-                    }`}
-                    style={{
-                      left: `${left}%`,
-                      top: `${top}%`,
-                      width: `${width}%`,
-                      height: `${height}%`,
-                    }}
-                  >
-                    {renderElement(
-                      specElement.type,
-                      specElement.role,
-                      specElement.content
-                    )}
-                  </div>
-                );
-              })}
+              {renderAdToDom(adSpec, resolvedLayout, surface)}
             </div>
           </div>
         </div>
