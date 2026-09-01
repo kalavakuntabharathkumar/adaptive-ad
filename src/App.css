@@ -290,12 +290,13 @@ padding: 6px 8px;
 color: #111827;
 
 /*
-
-* Smaller viewport-relative scaling prevents a wide
-* browser from creating text larger than the resolver's
-* calculated broadcast box.
-  */
-  font-size: clamp(10px, 2.2vw, 30px);
+ * FALLBACK ONLY. render-dom.tsx now sets font-size as an
+ * inline style from the resolved element's minTextSize,
+ * which wins over this rule. This clamp() only applies when
+ * a resolved element has no minTextSize (e.g. a surface
+ * profile that omits it).
+ */
+font-size: clamp(10px, 2.2vw, 30px);
 
 font-weight: 900;
 line-height: 1.05;
@@ -304,13 +305,8 @@ letter-spacing: -0.04em;
 overflow-wrap: anywhere;
 word-break: normal;
 
-/*
-
-* The element itself is still constrained by the
-* layout engine.
-  */
-  overflow: hidden;
-  }
+overflow: hidden;
+}
 
 .secondary-text {
 width: 100%;
@@ -326,6 +322,7 @@ padding: 6px 8px;
 
 color: #334155;
 
+/* FALLBACK ONLY — see .headline comment above. */
 font-size: clamp(8px, 1.4vw, 17px);
 line-height: 1.15;
 
