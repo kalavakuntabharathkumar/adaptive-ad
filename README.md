@@ -173,4 +173,4 @@ ChatGPT was used to understand the overall project scope and for planning, and m
 
 ## Time spent
 
-_[Fill in honestly — e.g. "~X hours across planning, resolver implementation, and UI."]_
+Approximately 40 hours of time is spent on this project a proper 3 and half day of work with half a day for planning.
