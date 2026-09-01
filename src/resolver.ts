@@ -50,6 +50,40 @@ const EPSILON = 0.5;
  */
 const MIN_CTA_TEXT_WIDTH = 96;
 
+/*
+ * Fallback minimum tap target for touch-only surfaces.
+ *
+ * Some touch-only surfaces (e.g. a retail kiosk) may not set an
+ * explicit `minTapTarget`, but interactive elements still need a
+ * physically tappable minimum size on any surface where the only
+ * input method is touch. This is the same default recommended by
+ * common accessibility guidelines (WCAG 2.5.5 / Apple HIG).
+ */
+const DEFAULT_TOUCH_MIN_TARGET = 44;
+
+/*
+ * The effective minimum tap target for a surface.
+ *
+ * - If the surface declares an explicit `minTapTarget`, use it.
+ * - Otherwise, if the surface is `touchOnly`, fall back to the
+ *   default touch minimum, since a touch-only surface has no
+ *   alternative (e.g. mouse/hover) input path for small targets.
+ * - Otherwise, there is no tap-target constraint.
+ */
+function getEffectiveMinTapTarget(
+  surface: SurfaceProfile
+): number | undefined {
+  if (surface.minTapTarget) {
+    return surface.minTapTarget;
+  }
+
+  if (surface.touchOnly) {
+    return DEFAULT_TOUCH_MIN_TARGET;
+  }
+
+  return undefined;
+}
+
 function clamp(
   value: number,
   minimum: number,
@@ -352,14 +386,16 @@ function getMinimumTapHeight(
   element: AdElement,
   surface: SurfaceProfile
 ): number {
-  if (
-    element.type !== "button" ||
-    !surface.minTapTarget
-  ) {
+  if (element.type !== "button") {
     return 0;
   }
 
-  return surface.minTapTarget;
+  const tapTarget =
+    getEffectiveMinTapTarget(
+      surface
+    );
+
+  return tapTarget ?? 0;
 }
 
 /*
@@ -367,6 +403,11 @@ function getMinimumTapHeight(
  *
  * These are constraints imposed by the rendering surface,
  * such as minimum text size and minimum interactive target size.
+ *
+ * `touchOnly` surfaces fall back to `DEFAULT_TOUCH_MIN_TARGET`
+ * via `getEffectiveMinTapTarget` when no explicit `minTapTarget`
+ * is set, so touch-only kiosks can't resolve buttons smaller than
+ * a physically tappable size.
  */
 function getMinimumPhysicalSize(
   element: AdElement,
@@ -390,11 +431,16 @@ function getMinimumPhysicalSize(
       tapHeight
     );
 
+  const tapTarget =
+    getEffectiveMinTapTarget(
+      surface
+    );
+
   return {
     width:
       element.type === "button" &&
-      surface.minTapTarget
-        ? surface.minTapTarget
+      tapTarget
+        ? tapTarget
         : 1,
 
     height:
@@ -1054,7 +1100,9 @@ function resolveVertical(
         minTapTarget:
           item.element.type ===
             "button"
-            ? surface.minTapTarget
+            ? getEffectiveMinTapTarget(
+                surface
+              )
             : undefined,
       };
 
@@ -1468,8 +1516,8 @@ function createResolvedElement(
         : undefined,
 
     minTapTarget:
-      element.type === "button"
-        ? surface?.minTapTarget
+      element.type === "button" && surface
+        ? getEffectiveMinTapTarget(surface)
         : undefined,
   };
 }

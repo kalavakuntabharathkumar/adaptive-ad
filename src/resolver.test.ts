@@ -653,6 +653,128 @@ function validateNoOverlap(): void {
 }
 
 /*
+ * Explicit touch-only validation.
+ *
+ * `touchOnly` must actually constrain the resolver, not just be
+ * stored and ignored. A touch-only surface that omits an explicit
+ * `minTapTarget` should still force buttons to a physically
+ * tappable minimum size (the resolver's default touch minimum),
+ * and that minimum should be reflected both in the resolved box
+ * and in the `minTapTarget` the renderer receives.
+ */
+function validateTouchOnlySurface(): void {
+  const DEFAULT_TOUCH_MIN_TARGET = 44;
+
+  const touchOnlyNoExplicitTarget = {
+    width: 1080,
+    height: 1080,
+
+    safeArea: {
+      top: 24,
+      right: 24,
+      bottom: 24,
+      left: 24,
+    },
+
+    touchOnly: true,
+  };
+
+  const result = resolveLayout(
+    adSpec.elements,
+    touchOnlyNoExplicitTarget
+  );
+
+  const cta = result.elements.find(
+    (element) => element.id === "cta"
+  );
+
+  assert(
+    cta?.visible === true,
+    "touch-only surface should keep the CTA visible"
+  );
+
+  assert(
+    cta !== undefined &&
+      cta.box.width >=
+        DEFAULT_TOUCH_MIN_TARGET,
+    "touch-only surface without an explicit minTapTarget must still enforce a minimum tap width on buttons"
+  );
+
+  assert(
+    cta !== undefined &&
+      cta.box.height >=
+        DEFAULT_TOUCH_MIN_TARGET,
+    "touch-only surface without an explicit minTapTarget must still enforce a minimum tap height on buttons"
+  );
+
+  assert(
+    cta?.minTapTarget ===
+      DEFAULT_TOUCH_MIN_TARGET,
+    "touch-only surface without an explicit minTapTarget should report the default touch minimum to the renderer"
+  );
+
+  const touchOnlyWithExplicitTarget = {
+    width: 1080,
+    height: 1080,
+
+    safeArea: {
+      top: 24,
+      right: 24,
+      bottom: 24,
+      left: 24,
+    },
+
+    touchOnly: true,
+    minTapTarget: 60,
+  };
+
+  const explicitResult = resolveLayout(
+    adSpec.elements,
+    touchOnlyWithExplicitTarget
+  );
+
+  const explicitCta =
+    explicitResult.elements.find(
+      (element) => element.id === "cta"
+    );
+
+  assert(
+    explicitCta?.minTapTarget === 60,
+    "an explicit minTapTarget must take priority over the touch-only default"
+  );
+
+  const notTouchOnly = {
+    width: 1080,
+    height: 1080,
+
+    safeArea: {
+      top: 24,
+      right: 24,
+      bottom: 24,
+      left: 24,
+    },
+  };
+
+  const notTouchOnlyResult = resolveLayout(
+    adSpec.elements,
+    notTouchOnly
+  );
+
+  const notTouchOnlyCta =
+    notTouchOnlyResult.elements.find(
+      (element) => element.id === "cta"
+    );
+
+  assert(
+    notTouchOnlyCta?.minTapTarget ===
+      undefined,
+    "a surface that is neither touch-only nor given an explicit minTapTarget should not invent a tap-target constraint"
+  );
+
+  console.log("PASS: touch-only surface");
+}
+
+/*
  * Explicit unknown fifth-surface validation.
  *
  * This surface is intentionally NOT taken from the
@@ -774,6 +896,7 @@ validateNoNegativeCoordinates();
 validateNoOverflow();
 validateNoOverlap();
 
+validateTouchOnlySurface();
 validateUnknownFifthSurface();
 
 console.log(
