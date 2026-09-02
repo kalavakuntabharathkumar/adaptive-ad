@@ -282,7 +282,7 @@ That said, having two separate horizontal strategies living side by side is not 
 
 Planning, and an early pass at this documentation, were done with the help of ChatGPT.
 
-That documentation was then checked back against the actual working code, and corrected, with the help of Claude, which was also used to implement the touch only fix described above, its accompanying test, and a small cleanup of some dead styling rules that were no longer referenced anywhere in the project.
+That documentation was then checked back against the actual working code, and corrected, with the help of Claude, which was also used to reverify the documentation according to the projecst and for clean up tasks.
 
 ---
 
