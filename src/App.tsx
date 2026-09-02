@@ -29,8 +29,6 @@ const surfaceLabels: Record<
   mobileLandscape: "Mobile Landscape",
   broadcastLowerThird: "Broadcast Lower Third",
   retailKiosk: "Square Kiosk",
-  constraintTest: "Constraint Test",
-  bharathSurface: "Bharath Surface",
 };
 
 const MAX_HEADLINE_CHARS = 30;
