@@ -1,14 +1,8 @@
 import type { SurfaceProfile } from "./surfaces";
 import type { AdElement } from "./spec";
-import type {
-  ResolvedElement,
-  ResolvedLayout,
-} from "./resolved-layout";
+import type { ResolvedElement, ResolvedLayout } from "./resolved-layout";
 
-type LayoutDirection =
-  | "vertical"
-  | "horizontal"
-  | "balanced";
+type LayoutDirection = "vertical" | "horizontal" | "balanced";
 
 interface UsableArea {
   x: number;
@@ -38,6 +32,25 @@ interface Region {
 const GAP = 16;
 const MIN_SAFE_DIMENSION = 1;
 const EPSILON = 0.5;
+const AVERAGE_CHARACTER_WIDTH = 0.52;
+const DEFAULT_LINE_HEIGHT = 1.2;
+
+/*
+ * Safety margin for the character-width estimate below.
+ *
+ * AVERAGE_CHARACTER_WIDTH assumes normal-weight, normal-tracking
+ * text. The actual headline style (font-weight: 900, letter-
+ * spacing: -0.04em in App.css) is bold, and real glyph widths for
+ * bold text run wider than this flat average accounts for. Without
+ * this margin, the resolver assumes more characters fit per line
+ * than the real browser will actually fit, under-reserves box
+ * height, and the box ends up too short once actually rendered —
+ * even though render-dom's own text-fit check (which uses real
+ * browser measurement, not an estimate) is correct. This constant
+ * mirrors render-dom's own TEXT_FIT_SAFETY_FACTOR so both files
+ * are conservative in the same way.
+ */
+const TEXT_ESTIMATE_SAFETY_FACTOR = 1.15;
 
 /*
  * Minimum horizontal space required for CTA content.
@@ -60,7 +73,6 @@ const MIN_CTA_TEXT_WIDTH = 96;
  * common accessibility guidelines (WCAG 2.5.5 / Apple HIG).
  */
 const DEFAULT_TOUCH_MIN_TARGET = 44;
-
 /*
  * The effective minimum tap target for a surface.
  *
@@ -70,9 +82,7 @@ const DEFAULT_TOUCH_MIN_TARGET = 44;
  *   alternative (e.g. mouse/hover) input path for small targets.
  * - Otherwise, there is no tap-target constraint.
  */
-function getEffectiveMinTapTarget(
-  surface: SurfaceProfile
-): number | undefined {
+function getEffectiveMinTapTarget(surface: SurfaceProfile): number | undefined {
   if (surface.minTapTarget) {
     return surface.minTapTarget;
   }
@@ -84,24 +94,15 @@ function getEffectiveMinTapTarget(
   return undefined;
 }
 
-function clamp(
-  value: number,
-  minimum: number,
-  maximum: number
-): number {
+function clamp(value: number, minimum: number, maximum: number): number {
   if (maximum < minimum) {
     return clamp(value, maximum, minimum);
   }
 
-  return Math.min(
-    maximum,
-    Math.max(minimum, value)
-  );
+  return Math.min(maximum, Math.max(minimum, value));
 }
 
-function getSafeArea(
-  surface: SurfaceProfile
-) {
+function getSafeArea(surface: SurfaceProfile) {
   return surface.safeArea ?? {
     top: 0,
     right: 0,
@@ -110,38 +111,20 @@ function getSafeArea(
   };
 }
 
-function getUsableArea(
-  surface: SurfaceProfile
-): UsableArea {
+function getUsableArea(surface: SurfaceProfile): UsableArea {
   const safeArea = getSafeArea(surface);
 
   return {
     x: safeArea.left,
     y: safeArea.top,
-    width: Math.max(
-      0,
-      surface.width -
-        safeArea.left -
-        safeArea.right
-    ),
-    height: Math.max(
-      0,
-      surface.height -
-        safeArea.top -
-        safeArea.bottom
-    ),
+    width: Math.max(0, surface.width - safeArea.left - safeArea.right),
+    height: Math.max(0, surface.height - safeArea.top - safeArea.bottom),
   };
 }
 
-function getLayoutDirection(
-  surface: SurfaceProfile
-): LayoutDirection {
+function getLayoutDirection(surface: SurfaceProfile): LayoutDirection {
   const aspectRatio =
-    surface.width /
-    Math.max(
-      surface.height,
-      MIN_SAFE_DIMENSION
-    );
+    surface.width / Math.max(surface.height, MIN_SAFE_DIMENSION);
 
   /*
    * These thresholds are geometry-driven composition
@@ -165,101 +148,44 @@ function getPreferredFraction(
   if (direction === "vertical") {
     switch (element.role) {
       case "hero":
-        return {
-          width: 0.78,
-          height: 0.30,
-        };
-
+        return { width: 0.78, height: 0.30 };
       case "primary":
-        return {
-          width: 0.88,
-          height: 0.12,
-        };
-
+        return { width: 0.88, height: 0.12 };
       case "action":
-        return {
-          width: 0.55,
-          height: 0.10,
-        };
-
+        return { width: 0.55, height: 0.10 };
       case "branding":
-        return {
-          width: 0.22,
-          height: 0.055,
-        };
-
+        return { width: 0.22, height: 0.055 };
       case "secondary":
-        return {
-          width: 0.68,
-          height: 0.08,
-        };
+        return { width: 0.68, height: 0.08 };
     }
   }
 
   if (direction === "horizontal") {
     switch (element.role) {
       case "hero":
-        return {
-          width: 0.30,
-          height: 0.78,
-        };
-
+        return { width: 0.30, height: 0.78 };
       case "primary":
-        return {
-          width: 0.48,
-          height: 0.28,
-        };
-
+        return { width: 0.48, height: 0.28 };
       case "action":
-        return {
-          width: 0.22,
-          height: 0.25,
-        };
-
+        return { width: 0.22, height: 0.25 };
       case "branding":
-        return {
-          width: 0.13,
-          height: 0.16,
-        };
-
+        return { width: 0.13, height: 0.16 };
       case "secondary":
-        return {
-          width: 0.30,
-          height: 0.20,
-        };
+        return { width: 0.30, height: 0.20 };
     }
   }
 
   switch (element.role) {
     case "hero":
-      return {
-        width: 0.45,
-        height: 0.58,
-      };
-
+      return { width: 0.45, height: 0.58 };
     case "primary":
-      return {
-        width: 0.72,
-        height: 0.15,
-      };
-
+      return { width: 0.72, height: 0.15 };
     case "action":
-      return {
-        width: 0.42,
-        height: 0.11,
-      };
-
+      return { width: 0.42, height: 0.11 };
     case "branding":
-      return {
-        width: 0.22,
-        height: 0.07,
-      };
-
+      return { width: 0.22, height: 0.07 };
     case "secondary":
-      return {
-        width: 0.55,
-        height: 0.095,
-      };
+      return { width: 0.55, height: 0.095 };
   }
 }
 
@@ -270,116 +196,81 @@ function getMinimumFraction(
   if (direction === "vertical") {
     switch (element.role) {
       case "hero":
-        return {
-          width: 0.42,
-          height: 0.18,
-        };
-
+        return { width: 0.42, height: 0.18 };
       case "primary":
-        return {
-          width: 0.50,
-          height: 0.065,
-        };
-
+        return { width: 0.50, height: 0.065 };
       case "action":
-        return {
-          width: 0.30,
-          height: 0.07,
-        };
-
+        return { width: 0.30, height: 0.07 };
       case "branding":
-        return {
-          width: 0.10,
-          height: 0.035,
-        };
-
+        return { width: 0.10, height: 0.035 };
       case "secondary":
-        return {
-          width: 0.32,
-          height: 0.05,
-        };
+        return { width: 0.32, height: 0.05 };
     }
   }
 
   if (direction === "horizontal") {
     switch (element.role) {
       case "hero":
-        return {
-          width: 0.18,
-          height: 0.50,
-        };
-
+        return { width: 0.18, height: 0.50 };
       case "primary":
-        return {
-          width: 0.25,
-          height: 0.15,
-        };
-
+        return { width: 0.25, height: 0.15 };
       case "action":
-        return {
-          width: 0.12,
-          height: 0.12,
-        };
-
+        return { width: 0.12, height: 0.12 };
       case "branding":
-        return {
-          width: 0.06,
-          height: 0.06,
-        };
-
+        return { width: 0.06, height: 0.06 };
       case "secondary":
-        return {
-          width: 0.15,
-          height: 0.08,
-        };
+        return { width: 0.15, height: 0.08 };
     }
   }
 
   switch (element.role) {
     case "hero":
-      return {
-        width: 0.28,
-        height: 0.32,
-      };
-
+      return { width: 0.28, height: 0.32 };
     case "primary":
-      return {
-        width: 0.40,
-        height: 0.08,
-      };
-
+      return { width: 0.40, height: 0.08 };
     case "action":
-      return {
-        width: 0.22,
-        height: 0.07,
-      };
-
+      return { width: 0.22, height: 0.07 };
     case "branding":
-      return {
-        width: 0.10,
-        height: 0.04,
-      };
-
+      return { width: 0.10, height: 0.04 };
     case "secondary":
-      return {
-        width: 0.24,
-        height: 0.05,
-      };
+      return { width: 0.24, height: 0.05 };
   }
 }
 
 function getMinimumTextHeight(
   element: AdElement,
-  surface: SurfaceProfile
+  surface: SurfaceProfile,
+  availableWidth: number
 ): number {
   if (
     element.type !== "text" ||
-    !surface.minTextSize
+    !surface.minTextSize ||
+    availableWidth <= 0
   ) {
     return 0;
   }
 
-  return surface.minTextSize * 1.25;
+  const charactersPerLine = Math.max(
+    1,
+    Math.floor(
+      availableWidth /
+        (surface.minTextSize *
+          AVERAGE_CHARACTER_WIDTH *
+          TEXT_ESTIMATE_SAFETY_FACTOR)
+    )
+  );
+
+  const lines = Math.max(
+    1,
+    Math.ceil(element.content.length / charactersPerLine)
+  );
+
+  return Math.max(
+    surface.minTextSize * 1.25,
+    lines *
+      surface.minTextSize *
+      DEFAULT_LINE_HEIGHT
+  );
 }
 
 function getMinimumTapHeight(
@@ -390,11 +281,7 @@ function getMinimumTapHeight(
     return 0;
   }
 
-  const tapTarget =
-    getEffectiveMinTapTarget(
-      surface
-    );
-
+  const tapTarget = getEffectiveMinTapTarget(surface);
   return tapTarget ?? 0;
 }
 
@@ -408,49 +295,39 @@ function getMinimumTapHeight(
  * via `getEffectiveMinTapTarget` when no explicit `minTapTarget`
  * is set, so touch-only kiosks can't resolve buttons smaller than
  * a physically tappable size.
+ *
+ * `regionWidth` MUST be the actual width the element's box will
+ * occupy (its region/column width), not the full surface width.
+ * Text-wrap math (getMinimumTextHeight) depends entirely on this
+ * value to know how many characters fit per line. If callers omit
+ * it, the default below silently falls back to `surface.width`,
+ * which is wrong for any element placed inside a narrower column
+ * (e.g. the information column in a horizontal/broadcast layout)
+ * and causes the reserved minimum height to be far too small —
+ * the element then gets a box that isn't tall enough for the text
+ * actually wrapped at `minTextSize` in its real (narrower) width.
+ * Always pass the real region width explicitly; do not rely on
+ * this default.
  */
 function getMinimumPhysicalSize(
   element: AdElement,
-  surface: SurfaceProfile
+  surface: SurfaceProfile,
+  regionWidth = surface.width
 ): ElementSize {
-  const textHeight =
-    getMinimumTextHeight(
-      element,
-      surface
-    );
-
-  const tapHeight =
-    getMinimumTapHeight(
-      element,
-      surface
-    );
-
-  const minimumHeight =
-    Math.max(
-      textHeight,
-      tapHeight
-    );
-
-  const tapTarget =
-    getEffectiveMinTapTarget(
-      surface
-    );
+  const textHeight = getMinimumTextHeight(
+  element,
+  surface,
+  regionWidth
+);
+  const tapHeight = getMinimumTapHeight(element, surface);
+  const minimumHeight = Math.max(textHeight, tapHeight);
+  const tapTarget = getEffectiveMinTapTarget(surface);
 
   return {
-    width:
-      element.type === "button" &&
-      tapTarget
-        ? tapTarget
-        : 1,
-
-    height:
-      Math.max(
-        1,
-        minimumHeight
-      ),
+    width: element.type === "button" && tapTarget ? tapTarget : 1,
+    height: Math.max(1, minimumHeight),
   };
 }
-
 /*
  * Content constraints.
  *
@@ -458,13 +335,8 @@ function getMinimumPhysicalSize(
  * This makes CTA content protection work identically in
  * vertical, horizontal, balanced, and adaptive compositions.
  */
-function getMinimumContentSize(
-  element: AdElement
-): ElementSize {
-  if (
-    element.type === "button" &&
-    element.role === "action"
-  ) {
+function getMinimumContentSize(element: AdElement): ElementSize {
+  if (element.type === "button" && element.role === "action") {
     return {
       width: MIN_CTA_TEXT_WIDTH,
       height: 1,
@@ -476,7 +348,6 @@ function getMinimumContentSize(
     height: 1,
   };
 }
-
 /*
  * Combines all minimum constraints:
  *
@@ -487,6 +358,17 @@ function getMinimumContentSize(
  * content minimum
  *        ↓
  * final minimum size
+ *
+ * FIX: `region.width` is now passed into getMinimumPhysicalSize
+ * explicitly. Previously this call omitted the region width, so
+ * getMinimumPhysicalSize silently defaulted to the FULL surface
+ * width (e.g. 1920px on broadcast) instead of the actual, much
+ * narrower, region the element is being placed into. That made
+ * getMinimumTextHeight assume far fewer wrapped lines than the
+ * text would actually need at minTextSize once squeezed into its
+ * real column width — producing a minimum box height that was too
+ * small, which is what caused text clipping specifically on wide
+ * surfaces with narrow text columns (e.g. broadcastLowerThird).
  */
 function getMinimumElementSize(
   element: AdElement,
@@ -494,79 +376,61 @@ function getMinimumElementSize(
   minimumFraction: ElementSize,
   surface: SurfaceProfile
 ): ElementSize {
-  const physicalMinimum =
-    getMinimumPhysicalSize(
-      element,
-      surface
-    );
-
-  const contentMinimum =
-    getMinimumContentSize(
-      element
-    );
+  const physicalMinimum = getMinimumPhysicalSize(
+    element,
+    surface,
+    region.width
+  );
+  const contentMinimum = getMinimumContentSize(element);
 
   return {
     width: Math.max(
-      region.width *
-        minimumFraction.width,
+      region.width * minimumFraction.width,
       physicalMinimum.width,
       contentMinimum.width
     ),
-
     height: Math.max(
-      region.height *
-        minimumFraction.height,
+      region.height * minimumFraction.height,
       physicalMinimum.height,
       contentMinimum.height
     ),
   };
 }
-
+/*
+ * Builds the initial size for every element.
+ *
+ * Preferred size represents how much space the element would
+ * like to have, while minimum size represents the smallest
+ * space it is allowed to use after constraints are applied.
+ *
+ * Keeping these two sizes separate lets the resolver shrink
+ * lower-priority elements without losing their hard minimums.
+ */
 function createSizedElements(
   elements: AdElement[],
   region: UsableArea | Region,
   direction: LayoutDirection,
   surface: SurfaceProfile
 ): SizedElement[] {
-  return elements.map(
-    (element) => {
-      const preferred =
-        getPreferredFraction(
-          element,
-          direction
-        );
+  return elements.map((element) => {
+    const preferred = getPreferredFraction(element, direction);
+    const minimum = getMinimumFraction(element, direction);
+    const minimumSize = getMinimumElementSize(
+      element,
+      region,
+      minimum,
+      surface
+    );
 
-      const minimum =
-        getMinimumFraction(
-          element,
-          direction
-        );
-
-      const minimumSize =
-        getMinimumElementSize(
-          element,
-          region,
-          minimum,
-          surface
-        );
-
-      return {
-        element,
-
-        size: {
-          width:
-            region.width *
-            preferred.width,
-
-          height:
-            region.height *
-            preferred.height,
-        },
-
-        minimum: minimumSize,
-      };
-    }
-  );
+    return {
+      element,
+      size: {
+        width: region.width * preferred.width,
+        height: region.height * preferred.height,
+      },
+      minimum: minimumSize,
+    };
+  });
 }
 
 function getMainAxisSize(
@@ -586,7 +450,17 @@ function getMinimumMainAxisSize(
     ? item.minimum.width
     : item.minimum.height;
 }
-
+/*
+ * Fits elements into the available main-axis space.
+ *
+ * The function first checks whether the preferred sizes already
+ * fit. If they do not, it removes the excess by shrinking
+ * lower-priority elements first, stopping at each element's
+ * minimum size.
+ *
+ * Returning false means the available space is too small even
+ * after every element has been shrunk as much as allowed.
+ */
 function fitMainAxis(
   items: SizedElement[],
   available: number,
@@ -596,176 +470,80 @@ function fitMainAxis(
     return true;
   }
 
-  const totalGap =
-    Math.max(
-      items.length - 1,
-      0
-    ) * GAP;
-
+  const totalGap = Math.max(items.length - 1, 0) * GAP;
   const getTotal = () =>
     items.reduce(
-      (total, item) =>
-        total +
-        getMainAxisSize(
-          item,
-          direction
-        ),
+      (total, item) => total + getMainAxisSize(item, direction),
       totalGap
     );
 
-  if (
-    getTotal() <=
-    available + EPSILON
-  ) {
+  if (getTotal() <= available + EPSILON) {
     return true;
   }
 
-  let remaining =
-    getTotal() -
-    available;
+  let remaining = getTotal() - available;
 
   /*
    * Higher numeric priority means lower importance.
    *
    * Therefore lower-priority elements shrink first.
    */
-  const ordered =
-    [...items].sort(
-      (a, b) =>
-        b.element.priority -
-        a.element.priority
-    );
+  const ordered = [...items].sort(
+    (a, b) => b.element.priority - a.element.priority
+  );
 
   for (const item of ordered) {
-    if (
-      remaining <=
-      EPSILON
-    ) {
+    if (remaining <= EPSILON) {
       break;
     }
 
-    const current =
-      getMainAxisSize(
-        item,
-        direction
-      );
+    const current = getMainAxisSize(item, direction);
+    const minimum = getMinimumMainAxisSize(item, direction);
+    const shrinkable = Math.max(0, current - minimum);
+    const amount = Math.min(shrinkable, remaining);
 
-    const minimum =
-      getMinimumMainAxisSize(
-        item,
-        direction
-      );
-
-    const shrinkable =
-      Math.max(
-        0,
-        current - minimum
-      );
-
-    const amount =
-      Math.min(
-        shrinkable,
-        remaining
-      );
-
-    if (
-      direction ===
-      "horizontal"
-    ) {
-      item.size.width =
-        current - amount;
+    if (direction === "horizontal") {
+      item.size.width = current - amount;
     } else {
-      item.size.height =
-        current - amount;
+      item.size.height = current - amount;
     }
 
     remaining -= amount;
   }
 
-  return (
-    remaining <=
-    EPSILON
-  );
+  return remaining <= EPSILON;
 }
 
 function fitsWithinArea(
   elements: ResolvedElement[],
   area: UsableArea
 ): boolean {
-  const right =
-    area.x + area.width;
+  const right = area.x + area.width;
+  const bottom = area.y + area.height;
 
-  const bottom =
-    area.y + area.height;
+  return elements.every((element) => {
+    const box = element.box;
 
-  return elements.every(
-    (element) => {
-      const box =
-        element.box;
-
-      return (
-        box.x >=
-          area.x -
-            EPSILON &&
-
-        box.y >=
-          area.y -
-            EPSILON &&
-
-        box.x +
-          box.width <=
-          right +
-            EPSILON &&
-
-        box.y +
-          box.height <=
-          bottom +
-            EPSILON
-      );
-    }
-  );
+    return (
+      box.x >= area.x - EPSILON &&
+      box.y >= area.y - EPSILON &&
+      box.x + box.width <= right + EPSILON &&
+      box.y + box.height <= bottom + EPSILON
+    );
+  });
 }
 
-function hasOverlap(
-  elements: ResolvedElement[]
-): boolean {
-  for (
-    let first = 0;
-    first < elements.length;
-    first++
-  ) {
-    for (
-      let second =
-        first + 1;
-      second < elements.length;
-      second++
-    ) {
-      const a =
-        elements[first].box;
-
-      const b =
-        elements[second].box;
+function hasOverlap(elements: ResolvedElement[]): boolean {
+  for (let first = 0; first < elements.length; first++) {
+    for (let second = first + 1; second < elements.length; second++) {
+      const a = elements[first].box;
+      const b = elements[second].box;
 
       if (
-        a.x <
-          b.x +
-            b.width -
-            EPSILON &&
-
-        a.x +
-          a.width >
-          b.x +
-            EPSILON &&
-
-        a.y <
-          b.y +
-            b.height -
-            EPSILON &&
-
-        a.y +
-          a.height >
-          b.y +
-            EPSILON
+        a.x < b.x + b.width - EPSILON &&
+        a.x + a.width > b.x + EPSILON &&
+        a.y < b.y + b.height - EPSILON &&
+        a.y + a.height > b.y + EPSILON
       ) {
         return true;
       }
@@ -775,37 +553,19 @@ function hasOverlap(
   return false;
 }
 
-function hasInvalidDimensions(
-  elements: ResolvedElement[]
-): boolean {
-  return elements.some(
-    (element) => {
-      const box =
-        element.box;
+function hasInvalidDimensions(elements: ResolvedElement[]): boolean {
+  return elements.some((element) => {
+    const box = element.box;
 
-      return (
-        !Number.isFinite(
-          box.x
-        ) ||
-
-        !Number.isFinite(
-          box.y
-        ) ||
-
-        !Number.isFinite(
-          box.width
-        ) ||
-
-        !Number.isFinite(
-          box.height
-        ) ||
-
-        box.width <= 0 ||
-
-        box.height <= 0
-      );
-    }
-  );
+    return (
+      !Number.isFinite(box.x) ||
+      !Number.isFinite(box.y) ||
+      !Number.isFinite(box.width) ||
+      !Number.isFinite(box.height) ||
+      box.width <= 0 ||
+      box.height <= 0
+    );
+  });
 }
 
 function satisfiesPhysicalConstraints(
@@ -813,69 +573,47 @@ function satisfiesPhysicalConstraints(
   sourceElements: AdElement[],
   surface: SurfaceProfile
 ): boolean {
-  return elements.every(
-    (resolved) => {
-      const source =
-        sourceElements.find(
-          (element) =>
-            element.id ===
-            resolved.id
-        );
+  return elements.every((resolved) => {
+    const source = sourceElements.find(
+      (element) => element.id === resolved.id
+    );
 
-      if (!source) {
-        return false;
-      }
-
-      const minimum =
-        getMinimumPhysicalSize(
-          source,
-          surface
-        );
-
-      return (
-        resolved.box.width >=
-          minimum.width -
-            EPSILON &&
-
-        resolved.box.height >=
-          minimum.height -
-            EPSILON
-      );
+    if (!source) {
+      return false;
     }
-  );
+
+    const minimum = getMinimumPhysicalSize(
+      source,
+      surface,
+      resolved.box.width
+    );
+
+    return (
+      resolved.box.width >= minimum.width - EPSILON &&
+      resolved.box.height >= minimum.height - EPSILON
+    );
+  });
 }
 
 function satisfiesCtaTextWidth(
   elements: ResolvedElement[],
   sourceElements: AdElement[]
 ): boolean {
-  return elements.every(
-    (resolved) => {
-      const source =
-        sourceElements.find(
-          (element) =>
-            element.id ===
-            resolved.id
-        );
+  return elements.every((resolved) => {
+    const source = sourceElements.find(
+      (element) => element.id === resolved.id
+    );
 
-      if (!source) {
-        return false;
-      }
-
-      if (
-        source.type !== "button" ||
-        source.role !== "action"
-      ) {
-        return true;
-      }
-
-      return (
-        resolved.box.width >=
-        MIN_CTA_TEXT_WIDTH -
-          EPSILON
-      );
+    if (!source) {
+      return false;
     }
-  );
+
+    if (source.type !== "button" || source.role !== "action") {
+      return true;
+    }
+
+    return resolved.box.width >= MIN_CTA_TEXT_WIDTH - EPSILON;
+  });
 }
 
 function isFeasible(
@@ -884,122 +622,76 @@ function isFeasible(
   area: UsableArea,
   surface: SurfaceProfile
 ): boolean {
-  if (
-    resolved.length !==
-    sourceElements.length
-  ) {
+  if (resolved.length !== sourceElements.length) {
     return false;
   }
 
-  if (
-    hasInvalidDimensions(
-      resolved
-    )
-  ) {
+  if (hasInvalidDimensions(resolved)) {
     return false;
   }
 
-  if (
-    !fitsWithinArea(
-      resolved,
-      area
-    )
-  ) {
+  if (!fitsWithinArea(resolved, area)) {
     return false;
   }
 
-  if (
-    hasOverlap(
-      resolved
-    )
-  ) {
+  if (hasOverlap(resolved)) {
     return false;
   }
 
-  if (
-    !satisfiesPhysicalConstraints(
-      resolved,
-      sourceElements,
-      surface
-    )
-  ) {
+  if (!satisfiesPhysicalConstraints(resolved, sourceElements, surface)) {
     return false;
   }
 
-  if (
-    !satisfiesCtaTextWidth(
-      resolved,
-      sourceElements
-    )
-  ) {
+  if (!satisfiesCtaTextWidth(resolved, sourceElements)) {
     return false;
   }
 
   return true;
 }
 
-function createHiddenElements(
-  elements: AdElement[]
-): ResolvedElement[] {
-  return elements.map(
-    (element) => ({
-      id: element.id,
-
-      box: {
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
-      },
-
-      visible: false,
-    })
-  );
+function createHiddenElements(elements: AdElement[]): ResolvedElement[] {
+  return elements.map((element) => ({
+    id: element.id,
+    box: {
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+    },
+    visible: false,
+  }));
 }
 
-function removeLowestPriority(
-  elements: AdElement[]
-): AdElement[] {
-  if (
-    elements.length <= 1
-  ) {
+/*
+ * Removes the least important remaining element when the current
+ * composition cannot satisfy all constraints.
+ *
+ * A larger numeric priority means lower importance. When two
+ * elements have the same priority, the later one is removed so
+ * the result remains deterministic.
+ */
+function removeLowestPriority(elements: AdElement[]): AdElement[] {
+  if (elements.length <= 1) {
     return elements;
   }
 
   let removeIndex = 0;
 
-  for (
-    let index = 1;
-    index < elements.length;
-    index++
-  ) {
-    const current =
-      elements[index];
+  for (let index = 1; index < elements.length; index++) {
+    const current = elements[index];
+    const selected = elements[removeIndex];
 
-    const selected =
-      elements[removeIndex];
-
-    if (
-      current.priority >
-      selected.priority
-    ) {
+    if (current.priority > selected.priority) {
       removeIndex = index;
       continue;
     }
 
-    if (
-      current.priority ===
-      selected.priority
-    ) {
+    if (current.priority === selected.priority) {
       removeIndex = index;
     }
   }
 
-  return elements.filter(
-    (_, index) =>
-      index !==
-      removeIndex
-  );
+  return elements.filter((_, index) => index !== removeIndex);
 }
 
 function resolveVertical(
@@ -1007,134 +699,71 @@ function resolveVertical(
   area: UsableArea,
   surface: SurfaceProfile
 ): ResolvedElement[] {
-  const sizes =
-    createSizedElements(
-      elements,
-      area,
-      "vertical",
-      surface
-    );
-
-  const fits =
-    fitMainAxis(
-      sizes,
-      area.height,
-      "vertical"
-    );
+  const sizes = createSizedElements(elements, area, "vertical", surface);
+  const fits = fitMainAxis(sizes, area.height, "vertical");
 
   if (!fits) {
     return [];
   }
 
   const totalHeight =
-    sizes.reduce(
-      (total, item) =>
-        total +
-        item.size.height,
-      0
-    ) +
-    Math.max(
-      sizes.length - 1,
-      0
-    ) * GAP;
+    sizes.reduce((total, item) => total + item.size.height, 0) +
+    Math.max(sizes.length - 1, 0) * GAP;
 
-  if (
-    totalHeight >
-    area.height +
-      EPSILON
-  ) {
+  if (totalHeight > area.height + EPSILON) {
     return [];
   }
 
-  let y =
-    area.y +
-    Math.max(
-      0,
-      (
-        area.height -
-        totalHeight
-      ) / 2
+  let y = area.y + Math.max(0, (area.height - totalHeight) / 2);
+
+  return sizes.map((item) => {
+    const width = clamp(
+      item.size.width,
+      item.minimum.width,
+      area.width
     );
+    const height = clamp(
+      item.size.height,
+      item.minimum.height,
+      area.height
+    );
+    const x = area.x + (area.width - width) / 2;
 
-  return sizes.map(
-    (item) => {
-      const width =
-        clamp(
-          item.size.width,
-          item.minimum.width,
-          area.width
-        );
+    const result: ResolvedElement = {
+      id: item.element.id,
+      box: {
+        x,
+        y,
+        width,
+        height,
+      },
+      visible: true,
+      minTextSize:
+        item.element.type === "text"
+          ? surface.minTextSize
+          : undefined,
+      minTapTarget:
+        item.element.type === "button"
+          ? getEffectiveMinTapTarget(surface)
+          : undefined,
+    };
 
-      const height =
-        clamp(
-          item.size.height,
-          item.minimum.height,
-          area.height
-        );
+    y += height + GAP;
+    return result;
+  });
+}
 
-      const x =
-        area.x +
-        (
-          area.width -
-          width
-        ) / 2;
-
-      const result: ResolvedElement = {
-        id: item.element.id,
-
-        box: {
-          x,
-          y,
-          width,
-          height,
-        },
-
-        visible: true,
-
-        minTextSize:
-          item.element.type ===
-            "text"
-            ? surface.minTextSize
-            : undefined,
-
-        minTapTarget:
-          item.element.type ===
-            "button"
-            ? getEffectiveMinTapTarget(
-                surface
-              )
-            : undefined,
-      };
-
-      y +=
-        height + GAP;
-
-      return result;
-    }
+function getInformationElements(elements: AdElement[]): AdElement[] {
+  return elements.filter(
+    (element) =>
+      element.role === "primary" || element.role === "secondary"
   );
 }
 
-function getInformationElements(
-  elements: AdElement[]
-): AdElement[] {
+function getActionElements(elements: AdElement[]): AdElement[] {
   return elements.filter(
     (element) =>
-      element.role ===
-        "primary" ||
-      element.role ===
-        "secondary"
-  );
-}
-
-function getActionElements(
-  elements: AdElement[]
-): AdElement[] {
-  return elements.filter(
-    (element) =>
-      element.role ===
-        "action" ||
-      element.role ===
-        "branding"
+      element.role === "action" || element.role === "branding"
   );
 }
 
@@ -1152,119 +781,64 @@ function getHorizontalRegionRequirements(
   area: UsableArea,
   surface: SurfaceProfile
 ): HorizontalRegionRequirements {
-  const information =
-    getInformationElements(
-      elements
-    );
+  const information = getInformationElements(elements);
+  const hero = elements.find((element) => element.role === "hero");
+  const actions = getActionElements(elements);
 
-  const hero =
-    elements.find(
-      (element) =>
-        element.role ===
-        "hero"
-    );
-
-  const actions =
-    getActionElements(
-      elements
-    );
-
-  const informationSizes =
-    createSizedElements(
-      information,
-      area,
-      "horizontal",
-      surface
-    );
-
-  const actionSizes =
-    createSizedElements(
-      actions,
-      area,
-      "horizontal",
-      surface
-    );
+  const informationSizes = createSizedElements(
+    information,
+    area,
+    "horizontal",
+    surface
+  );
+  const actionSizes = createSizedElements(
+    actions,
+    area,
+    "horizontal",
+    surface
+  );
 
   const informationPreferred =
     informationSizes.reduce(
-      (total, item) =>
-        total +
-        item.size.width,
+      (total, item) => total + item.size.width,
       0
-    ) +
-    Math.max(
-      informationSizes.length - 1,
-      0
-    ) * GAP;
+    ) + Math.max(informationSizes.length - 1, 0) * GAP;
 
   const informationMinimum =
     informationSizes.reduce(
-      (total, item) =>
-        total +
-        item.minimum.width,
+      (total, item) => total + item.minimum.width,
       0
-    ) +
-    Math.max(
-      informationSizes.length - 1,
-      0
-    ) * GAP;
+    ) + Math.max(informationSizes.length - 1, 0) * GAP;
 
   const actionPreferred =
     actionSizes.reduce(
-      (total, item) =>
-        total +
-        item.size.width,
+      (total, item) => total + item.size.width,
       0
-    ) +
-    Math.max(
-      actions.length - 1,
-      0
-    ) * GAP;
+    ) + Math.max(actions.length - 1, 0) * GAP;
 
   const actionMinimum =
     actionSizes.reduce(
-      (total, item) =>
-        total +
-        item.minimum.width,
+      (total, item) => total + item.minimum.width,
       0
-    ) +
-    Math.max(
-      actions.length - 1,
-      0
-    ) * GAP;
+    ) + Math.max(actions.length - 1, 0) * GAP;
 
   let heroPreferred = 0;
   let heroMinimum = 0;
 
   if (hero) {
-    const preferred =
-      getPreferredFraction(
-        hero,
-        "horizontal"
-      );
+    const preferred = getPreferredFraction(hero, "horizontal");
+    const minimum = getMinimumFraction(hero, "horizontal");
+    const physical = getMinimumPhysicalSize(
+      hero,
+      surface,
+      area.width * preferred.width
+    );
 
-    const minimum =
-      getMinimumFraction(
-        hero,
-        "horizontal"
-      );
-
-    const physical =
-      getMinimumPhysicalSize(
-        hero,
-        surface
-      );
-
-    heroPreferred =
-      area.width *
-      preferred.width;
-
-    heroMinimum =
-      Math.max(
-        area.width *
-          minimum.width,
-        physical.width
-      );
+    heroPreferred = area.width * preferred.width;
+    heroMinimum = Math.max(
+      area.width * minimum.width,
+      physical.width
+    );
   }
 
   return {
@@ -1285,27 +859,26 @@ function shrinkRegionWidths(
   width: number;
   remaining: number;
 } {
-  const shrinkable =
-    Math.max(
-      0,
-      preferred - minimum
-    );
-
-  const used =
-    Math.min(
-      shrinkable,
-      amount
-    );
+  const shrinkable = Math.max(0, preferred - minimum);
+  const used = Math.min(shrinkable, amount);
 
   return {
-    width:
-      preferred - used,
-
-    remaining:
-      amount - used,
+    width: preferred - used,
+    remaining: amount - used,
   };
 }
 
+/*
+ * Divides a horizontal composition into information, hero, and
+ * action regions.
+ *
+ * The regions start from preferred widths and are reduced toward
+ * their minimum widths when the surface is too narrow.
+ *
+ * The shrink order protects the more important hero content by
+ * giving action and information regions the opportunity to give
+ * up space first.
+ */
 function createHorizontalRegions(
   elements: AdElement[],
   area: UsableArea,
@@ -1315,111 +888,65 @@ function createHorizontalRegions(
   hero: Region;
   actions: Region;
 } | null {
-  const requirements =
-    getHorizontalRegionRequirements(
-      elements,
-      area,
-      surface
-    );
+  const requirements = getHorizontalRegionRequirements(
+    elements,
+    area,
+    surface
+  );
 
   const activeRegions = [
-    requirements.informationPreferred >
-      EPSILON,
-    requirements.heroPreferred >
-      EPSILON,
-    requirements.actionPreferred >
-      EPSILON,
+    requirements.informationPreferred > EPSILON,
+    requirements.heroPreferred > EPSILON,
+    requirements.actionPreferred > EPSILON,
   ].filter(Boolean).length;
 
-  const totalGaps =
-    Math.max(
-      activeRegions - 1,
-      0
-    ) * GAP;
+  const totalGaps = Math.max(activeRegions - 1, 0) * GAP;
+  const available = Math.max(0, area.width - totalGaps);
 
-  const available =
-    Math.max(
-      0,
-      area.width -
-        totalGaps
-    );
-
-  let informationWidth =
-    requirements.informationPreferred;
-
-  let heroWidth =
-    requirements.heroPreferred;
-
-  let actionWidth =
-    requirements.actionPreferred;
+  let informationWidth = requirements.informationPreferred;
+  let heroWidth = requirements.heroPreferred;
+  let actionWidth = requirements.actionPreferred;
 
   let required =
     informationWidth +
     heroWidth +
     actionWidth;
 
-  if (
-    required >
-    available +
-      EPSILON
-  ) {
-    let deficit =
-      required -
-      available;
+  if (required > available + EPSILON) {
+    let deficit = required - available;
 
-    const actionShrink =
-      shrinkRegionWidths(
-        actionWidth,
-        requirements.actionMinimum,
+    const actionShrink = shrinkRegionWidths(
+      actionWidth,
+      requirements.actionMinimum,
+      deficit
+    );
+
+    actionWidth = actionShrink.width;
+    deficit = actionShrink.remaining;
+
+    if (deficit > EPSILON) {
+      const informationShrink = shrinkRegionWidths(
+        informationWidth,
+        requirements.informationMinimum,
         deficit
       );
 
-    actionWidth =
-      actionShrink.width;
-
-    deficit =
-      actionShrink.remaining;
-
-    if (
-      deficit >
-      EPSILON
-    ) {
-      const informationShrink =
-        shrinkRegionWidths(
-          informationWidth,
-          requirements.informationMinimum,
-          deficit
-        );
-
-      informationWidth =
-        informationShrink.width;
-
-      deficit =
-        informationShrink.remaining;
+      informationWidth = informationShrink.width;
+      deficit = informationShrink.remaining;
     }
 
-    if (
-      deficit >
-      EPSILON
-    ) {
-      const heroShrink =
-        shrinkRegionWidths(
-          heroWidth,
-          requirements.heroMinimum,
-          deficit
-        );
+    if (deficit > EPSILON) {
+      const heroShrink = shrinkRegionWidths(
+        heroWidth,
+        requirements.heroMinimum,
+        deficit
+      );
 
-      heroWidth =
-        heroShrink.width;
-
-      deficit =
-        heroShrink.remaining;
+      heroWidth = heroShrink.width;
+      deficit = heroShrink.remaining;
     }
 
-    if (
-      deficit >
-      EPSILON
-    ) {
+    if (deficit > EPSILON) {
       return null;
     }
 
@@ -1429,20 +956,11 @@ function createHorizontalRegions(
       actionWidth;
   }
 
-  const visibleInformation =
-    informationWidth >
-    EPSILON;
+  const visibleInformation = informationWidth > EPSILON;
+  const visibleHero = heroWidth > EPSILON;
+  const visibleActions = actionWidth > EPSILON;
 
-  const visibleHero =
-    heroWidth >
-    EPSILON;
-
-  const visibleActions =
-    actionWidth >
-    EPSILON;
-
-  let cursor =
-    area.x;
+  let cursor = area.x;
 
   const information: Region = {
     x: cursor,
@@ -1454,12 +972,7 @@ function createHorizontalRegions(
   if (visibleInformation) {
     cursor +=
       informationWidth +
-      (
-        visibleHero ||
-        visibleActions
-          ? GAP
-          : 0
-      );
+      (visibleHero || visibleActions ? GAP : 0);
   }
 
   const hero: Region = {
@@ -1470,13 +983,7 @@ function createHorizontalRegions(
   };
 
   if (visibleHero) {
-    cursor +=
-      heroWidth +
-      (
-        visibleActions
-          ? GAP
-          : 0
-      );
+    cursor += heroWidth + (visibleActions ? GAP : 0);
   }
 
   const actions: Region = {
@@ -1505,16 +1012,12 @@ function createResolvedElement(
 ): ResolvedElement {
   return {
     id: element.id,
-
     box,
-
     visible: true,
-
     minTextSize:
       element.type === "text"
         ? surface?.minTextSize
         : undefined,
-
     minTapTarget:
       element.type === "button" && surface
         ? getEffectiveMinTapTarget(surface)
@@ -1537,28 +1040,21 @@ function resolveInformationGroup(
 
   const aspectRatio =
     region.width /
-    Math.max(
-      region.height,
-      MIN_SAFE_DIMENSION
+    Math.max(region.height, MIN_SAFE_DIMENSION);
+
+  if (aspectRatio >= 3) {
+    const sizes = createSizedElements(
+      elements,
+      region,
+      "horizontal",
+      surface
     );
 
-  if (
-    aspectRatio >= 3
-  ) {
-    const sizes =
-      createSizedElements(
-        elements,
-        region,
-        "horizontal",
-        surface
-      );
-
-    const fits =
-      fitMainAxis(
-        sizes,
-        region.width,
-        "horizontal"
-      );
+    const fits = fitMainAxis(
+      sizes,
+      region.width,
+      "horizontal"
+    );
 
     if (!fits) {
       return [];
@@ -1566,91 +1062,61 @@ function resolveInformationGroup(
 
     const totalWidth =
       sizes.reduce(
-        (total, item) =>
-          total +
-          item.size.width,
+        (total, item) => total + item.size.width,
         0
-      ) +
-      Math.max(
-        sizes.length - 1,
-        0
-      ) * GAP;
+      ) + Math.max(sizes.length - 1, 0) * GAP;
 
-    if (
-      totalWidth >
-      region.width +
-        EPSILON
-    ) {
+    if (totalWidth > region.width + EPSILON) {
       return [];
     }
 
     let x =
       region.x +
-      Math.max(
-        0,
-        (
-          region.width -
-          totalWidth
-        ) / 2
+      Math.max(0, (region.width - totalWidth) / 2);
+
+    return sizes.map((item) => {
+      const width = clamp(
+        item.size.width,
+        item.minimum.width,
+        region.width
+      );
+      const height = clamp(
+        item.size.height,
+        item.minimum.height,
+        region.height
+      );
+      const y =
+        region.y +
+        (region.height - height) / 2;
+
+      const result = createResolvedElement(
+        item.element,
+        {
+          x,
+          y,
+          width,
+          height,
+        },
+        surface
       );
 
-    return sizes.map(
-      (item) => {
-        const width =
-          clamp(
-            item.size.width,
-            item.minimum.width,
-            region.width
-          );
-
-        const height =
-          clamp(
-            item.size.height,
-            item.minimum.height,
-            region.height
-          );
-
-        const y =
-          region.y +
-          (
-            region.height -
-            height
-          ) / 2;
-
-        const result =
-          createResolvedElement(
-            item.element,
-            {
-              x,
-              y,
-              width,
-              height,
-            },
-            surface
-          );
-
-        x +=
-          width + GAP;
-
-        return result;
-      }
-    );
+      x += width + GAP;
+      return result;
+    });
   }
 
-  const sizes =
-    createSizedElements(
-      elements,
-      region,
-      "vertical",
-      surface
-    );
+  const sizes = createSizedElements(
+    elements,
+    region,
+    "vertical",
+    surface
+  );
 
-  const fits =
-    fitMainAxis(
-      sizes,
-      region.height,
-      "vertical"
-    );
+  const fits = fitMainAxis(
+    sizes,
+    region.height,
+    "vertical"
+  );
 
   if (!fits) {
     return [];
@@ -1658,75 +1124,47 @@ function resolveInformationGroup(
 
   const totalHeight =
     sizes.reduce(
-      (total, item) =>
-        total +
-        item.size.height,
+      (total, item) => total + item.size.height,
       0
-    ) +
-    Math.max(
-      sizes.length - 1,
-      0
-    ) * GAP;
+    ) + Math.max(sizes.length - 1, 0) * GAP;
 
-  if (
-    totalHeight >
-    region.height +
-      EPSILON
-  ) {
+  if (totalHeight > region.height + EPSILON) {
     return [];
   }
 
   let y =
     region.y +
-    Math.max(
-      0,
-      (
-        region.height -
-        totalHeight
-      ) / 2
+    Math.max(0, (region.height - totalHeight) / 2);
+
+  return sizes.map((item) => {
+    const width = clamp(
+      item.size.width,
+      item.minimum.width,
+      region.width
+    );
+    const height = clamp(
+      item.size.height,
+      item.minimum.height,
+      region.height
+    );
+    const x =
+      region.x +
+      (region.width - width) / 2;
+
+    const result = createResolvedElement(
+      item.element,
+      {
+        x,
+        y,
+        width,
+        height,
+      },
+      surface
     );
 
-  return sizes.map(
-    (item) => {
-      const width =
-        clamp(
-          item.size.width,
-          item.minimum.width,
-          region.width
-        );
-
-      const height =
-        clamp(
-          item.size.height,
-          item.minimum.height,
-          region.height
-        );
-
-      const x =
-        region.x +
-        (
-          region.width -
-          width
-        ) / 2;
-
-      const result =
-        createResolvedElement(
-          item.element,
-          {
-            x,
-            y,
-            width,
-            height,
-          },
-          surface
-        );
-
-      y +=
-        height + GAP;
-
-      return result;
-    }
-  );
+    y += height + GAP;
+    return result;
+  });
 }
 
 function resolveActionGroup(
@@ -1744,117 +1182,79 @@ function resolveActionGroup(
 
   const aspectRatio =
     region.width /
-    Math.max(
-      region.height,
-      MIN_SAFE_DIMENSION
+    Math.max(region.height, MIN_SAFE_DIMENSION);
+
+  if (aspectRatio >= 2.5 && elements.length > 1) {
+    const sizes = createSizedElements(
+      elements,
+      region,
+      "horizontal",
+      surface
     );
 
-  if (
-    aspectRatio >= 2.5 &&
-    elements.length > 1
-  ) {
-    const sizes =
-      createSizedElements(
-        elements,
-        region,
-        "horizontal",
-        surface
-      );
-
-    const fits =
-      fitMainAxis(
-        sizes,
-        region.width,
-        "horizontal"
-      );
+    const fits = fitMainAxis(
+      sizes,
+      region.width,
+      "horizontal"
+    );
 
     if (fits) {
       const totalWidth =
         sizes.reduce(
-          (total, item) =>
-            total +
-            item.size.width,
+          (total, item) => total + item.size.width,
           0
-        ) +
-        Math.max(
-          sizes.length - 1,
-          0
-        ) * GAP;
+        ) + Math.max(sizes.length - 1, 0) * GAP;
 
-      if (
-        totalWidth <=
-        region.width +
-          EPSILON
-      ) {
+      if (totalWidth <= region.width + EPSILON) {
         let x =
           region.x +
-          Math.max(
-            0,
-            (
-              region.width -
-              totalWidth
-            ) / 2
+          Math.max(0, (region.width - totalWidth) / 2);
+
+        return sizes.map((item) => {
+          const width = clamp(
+            item.size.width,
+            item.minimum.width,
+            region.width
+          );
+          const height = clamp(
+            item.size.height,
+            item.minimum.height,
+            region.height
+          );
+          const y =
+            region.y +
+            (region.height - height) / 2;
+
+          const result = createResolvedElement(
+            item.element,
+            {
+              x,
+              y,
+              width,
+              height,
+            },
+            surface
           );
 
-        return sizes.map(
-          (item) => {
-            const width =
-              clamp(
-                item.size.width,
-                item.minimum.width,
-                region.width
-              );
-
-            const height =
-              clamp(
-                item.size.height,
-                item.minimum.height,
-                region.height
-              );
-
-            const y =
-              region.y +
-              (
-                region.height -
-                height
-              ) / 2;
-
-            const result =
-              createResolvedElement(
-                item.element,
-                {
-                  x,
-                  y,
-                  width,
-                  height,
-                },
-                surface
-              );
-
-            x +=
-              width + GAP;
-
-            return result;
-          }
-        );
+          x += width + GAP;
+          return result;
+        });
       }
     }
   }
 
-  const sizes =
-    createSizedElements(
-      elements,
-      region,
-      "vertical",
-      surface
-    );
+  const sizes = createSizedElements(
+    elements,
+    region,
+    "vertical",
+    surface
+  );
 
-  const fits =
-    fitMainAxis(
-      sizes,
-      region.height,
-      "vertical"
-    );
+  const fits = fitMainAxis(
+    sizes,
+    region.height,
+    "vertical"
+  );
 
   if (!fits) {
     return [];
@@ -1862,75 +1262,47 @@ function resolveActionGroup(
 
   const totalHeight =
     sizes.reduce(
-      (total, item) =>
-        total +
-        item.size.height,
+      (total, item) => total + item.size.height,
       0
-    ) +
-    Math.max(
-      sizes.length - 1,
-      0
-    ) * GAP;
+    ) + Math.max(sizes.length - 1, 0) * GAP;
 
-  if (
-    totalHeight >
-    region.height +
-      EPSILON
-  ) {
+  if (totalHeight > region.height + EPSILON) {
     return [];
   }
 
   let y =
     region.y +
-    Math.max(
-      0,
-      (
-        region.height -
-        totalHeight
-      ) / 2
+    Math.max(0, (region.height - totalHeight) / 2);
+
+  return sizes.map((item) => {
+    const width = clamp(
+      item.size.width,
+      item.minimum.width,
+      region.width
+    );
+    const height = clamp(
+      item.size.height,
+      item.minimum.height,
+      region.height
+    );
+    const x =
+      region.x +
+      (region.width - width) / 2;
+
+    const result = createResolvedElement(
+      item.element,
+      {
+        x,
+        y,
+        width,
+        height,
+      },
+      surface
     );
 
-  return sizes.map(
-    (item) => {
-      const width =
-        clamp(
-          item.size.width,
-          item.minimum.width,
-          region.width
-        );
-
-      const height =
-        clamp(
-          item.size.height,
-          item.minimum.height,
-          region.height
-        );
-
-      const x =
-        region.x +
-        (
-          region.width -
-          width
-        ) / 2;
-
-      const result =
-        createResolvedElement(
-          item.element,
-          {
-            x,
-            y,
-            width,
-            height,
-          },
-          surface
-        );
-
-      y +=
-        height + GAP;
-
-      return result;
-    }
-  );
+    y += height + GAP;
+    return result;
+  });
 }
 
 function resolveAdaptiveLandscape(
@@ -1946,111 +1318,83 @@ function resolveAdaptiveLandscape(
     return null;
   }
 
-  const hero =
-    elements.find(
-      (element) =>
-        element.role ===
-        "hero"
-    );
+  const hero = elements.find(
+    (element) => element.role === "hero"
+  );
 
   if (!hero) {
     return null;
   }
 
-  const information =
-    elements.filter(
-      (element) =>
-        element.id !== hero.id &&
-        (
-          element.role === "primary" ||
-          element.role === "secondary"
-        )
-    );
+  const information = elements.filter(
+    (element) =>
+      element.id !== hero.id &&
+      (element.role === "primary" ||
+        element.role === "secondary")
+  );
 
-  const actions =
-    elements.filter(
-      (element) =>
-        element.id !== hero.id &&
-        (
-          element.role === "action" ||
-          element.role === "branding"
-        )
-    );
+  const actions = elements.filter(
+    (element) =>
+      element.id !== hero.id &&
+      (element.role === "action" ||
+        element.role === "branding")
+  );
 
   const assigned = new Set<string>([
     hero.id,
-    ...information.map(
-      (element) => element.id
-    ),
-    ...actions.map(
-      (element) => element.id
-    ),
+    ...information.map((element) => element.id),
+    ...actions.map((element) => element.id),
   ]);
 
-  const unassigned =
-    elements.filter(
-      (element) =>
-        !assigned.has(
-          element.id
-        )
-    );
+  const unassigned = elements.filter(
+    (element) => !assigned.has(element.id)
+  );
 
   if (unassigned.length > 0) {
     return null;
   }
 
-  const informationSizes =
-    createSizedElements(
-      information,
-      area,
-      "horizontal",
-      surface
-    );
+  const informationSizes = createSizedElements(
+    information,
+    area,
+    "horizontal",
+    surface
+  );
+  const actionSizes = createSizedElements(
+    actions,
+    area,
+    "horizontal",
+    surface
+  );
 
-  const actionSizes =
-    createSizedElements(
-      actions,
-      area,
-      "horizontal",
-      surface
-    );
-
-  const heroPreferred =
-    getPreferredFraction(
-      hero,
-      "horizontal"
-    );
-
-  const heroMinimum =
-    getMinimumFraction(
-      hero,
-      "horizontal"
-    );
-
-  const heroPhysical =
-    getMinimumPhysicalSize(
-      hero,
-      surface
-    );
+  const heroPreferred = getPreferredFraction(
+    hero,
+    "horizontal"
+  );
+  const heroMinimum = getMinimumFraction(
+    hero,
+    "horizontal"
+  );
+  const heroPhysical = getMinimumPhysicalSize(
+    hero,
+    surface,
+    area.width * heroPreferred.width
+  );
 
   const heroPreferredWidth =
-    area.width *
-    heroPreferred.width;
+    area.width * heroPreferred.width;
 
-  const heroMinimumWidth =
-    Math.max(
-      area.width *
-        heroMinimum.width,
-      heroPhysical.width
-    );
+  const heroMinimumWidth = Math.max(
+    area.width * heroMinimum.width,
+    heroPhysical.width
+  );
 
   const informationPreferredWidth =
     informationSizes.length === 0
       ? 0
       : Math.max(
           ...informationSizes.map(
-            (item) =>
-              item.size.width
+            (item) => item.size.width
           )
         );
 
@@ -2059,8 +1403,7 @@ function resolveAdaptiveLandscape(
       ? 0
       : Math.max(
           ...informationSizes.map(
-            (item) =>
-              item.minimum.width
+            (item) => item.minimum.width
           )
         );
 
@@ -2069,8 +1412,7 @@ function resolveAdaptiveLandscape(
       ? 0
       : Math.max(
           ...actionSizes.map(
-            (item) =>
-              item.size.width
+            (item) => item.size.width
           )
         );
 
@@ -2079,8 +1421,7 @@ function resolveAdaptiveLandscape(
       ? 0
       : Math.max(
           ...actionSizes.map(
-            (item) =>
-              item.minimum.width
+            (item) => item.minimum.width
           )
         );
 
@@ -2090,10 +1431,7 @@ function resolveAdaptiveLandscape(
     Number(actions.length > 0);
 
   const columnGaps =
-    Math.max(
-      0,
-      columnCount - 1
-    ) * GAP;
+    Math.max(0, columnCount - 1) * GAP;
 
   const minimumTotalWidth =
     informationMinimumWidth +
@@ -2101,21 +1439,14 @@ function resolveAdaptiveLandscape(
     actionMinimumWidth +
     columnGaps;
 
-  if (
-    minimumTotalWidth >
-    area.width + EPSILON
-  ) {
+  if (minimumTotalWidth > area.width + EPSILON) {
     return null;
   }
 
   let informationWidth =
     informationPreferredWidth;
-
-  let heroWidth =
-    heroPreferredWidth;
-
-  let actionWidth =
-    actionPreferredWidth;
+  let heroWidth = heroPreferredWidth;
+  let actionWidth = actionPreferredWidth;
 
   const preferredTotal =
     informationWidth +
@@ -2125,21 +1456,14 @@ function resolveAdaptiveLandscape(
 
   let deficit = Math.max(
     0,
-    preferredTotal -
-      area.width
+    preferredTotal - area.width
   );
 
-  if (
-    deficit > EPSILON &&
-    actions.length > 0
-  ) {
-    const shrinkable =
-      Math.max(
-        0,
-        actionWidth -
-          actionMinimumWidth
-      );
-
+  if (deficit > EPSILON && actions.length > 0) {
+    const shrinkable = Math.max(
+      0,
+      actionWidth - actionMinimumWidth
+    );
     const amount = Math.min(
       shrinkable,
       deficit
@@ -2149,17 +1473,11 @@ function resolveAdaptiveLandscape(
     deficit -= amount;
   }
 
-  if (
-    deficit > EPSILON &&
-    information.length > 0
-  ) {
-    const shrinkable =
-      Math.max(
-        0,
-        informationWidth -
-          informationMinimumWidth
-      );
-
+  if (deficit > EPSILON && information.length > 0) {
+    const shrinkable = Math.max(
+      0,
+      informationWidth - informationMinimumWidth
+    );
     const amount = Math.min(
       shrinkable,
       deficit
@@ -2169,16 +1487,11 @@ function resolveAdaptiveLandscape(
     deficit -= amount;
   }
 
-  if (
-    deficit > EPSILON
-  ) {
-    const shrinkable =
-      Math.max(
-        0,
-        heroWidth -
-          heroMinimumWidth
-      );
-
+  if (deficit > EPSILON) {
+    const shrinkable = Math.max(
+      0,
+      heroWidth - heroMinimumWidth
+    );
     const amount = Math.min(
       shrinkable,
       deficit
@@ -2188,9 +1501,7 @@ function resolveAdaptiveLandscape(
     deficit -= amount;
   }
 
-  if (
-    deficit > EPSILON
-  ) {
+  if (deficit > EPSILON) {
     return null;
   }
 
@@ -2200,28 +1511,21 @@ function resolveAdaptiveLandscape(
     actionWidth +
     columnGaps;
 
-  if (
-    actualTotalWidth >
-    area.width + EPSILON
-  ) {
+  if (actualTotalWidth > area.width + EPSILON) {
     return null;
   }
 
   const extraWidth = Math.max(
     0,
-    area.width -
-      actualTotalWidth
+    area.width - actualTotalWidth
   );
 
   if (information.length > 0) {
-    informationWidth +=
-      extraWidth;
+    informationWidth += extraWidth;
   } else if (actions.length > 0) {
-    actionWidth +=
-      extraWidth;
+    actionWidth += extraWidth;
   } else {
-    heroWidth +=
-      extraWidth;
+    heroWidth += extraWidth;
   }
 
   const columns: Array<{
@@ -2237,9 +1541,7 @@ function resolveAdaptiveLandscape(
       width: informationWidth,
     });
 
-    columnX +=
-      informationWidth +
-      GAP;
+    columnX += informationWidth + GAP;
   }
 
   columns.push({
@@ -2247,8 +1549,7 @@ function resolveAdaptiveLandscape(
     width: heroWidth,
   });
 
-  columnX +=
-    heroWidth;
+  columnX += heroWidth;
 
   if (actions.length > 0) {
     columnX += GAP;
@@ -2265,19 +1566,11 @@ function resolveAdaptiveLandscape(
       : undefined;
 
   const heroColumn =
-    columns[
-      information.length > 0
-        ? 1
-        : 0
-    ];
+    columns[information.length > 0 ? 1 : 0];
 
   const actionColumn =
     actions.length > 0
-      ? columns[
-          information.length > 0
-            ? 2
-            : 1
-        ]
+      ? columns[information.length > 0 ? 2 : 1]
       : undefined;
 
   const result: ResolvedElement[] = [];
@@ -2294,90 +1587,64 @@ function resolveAdaptiveLandscape(
     }
 
     const totalGap =
-      Math.max(
-        0,
-        sized.length - 1
-      ) * GAP;
+      Math.max(0, sized.length - 1) * GAP;
 
     const preferredHeight =
       sized.reduce(
         (total, item) =>
-          total +
-          item.size.height,
+          total + item.size.height,
         0
       ) + totalGap;
 
     const minimumHeight =
       sized.reduce(
         (total, item) =>
-          total +
-          item.minimum.height,
+          total + item.minimum.height,
         0
       ) + totalGap;
 
-    if (
-      minimumHeight >
-      area.height + EPSILON
-    ) {
+    if (minimumHeight > area.height + EPSILON) {
       return null;
     }
 
-    let remainingShrink =
-      Math.max(
-        0,
-        preferredHeight -
-          area.height
-      );
+    let remainingShrink = Math.max(
+      0,
+      preferredHeight - area.height
+    );
 
-    const shrinkOrder =
-      [...sized].sort(
-        (a, b) =>
-          b.element.priority -
-          a.element.priority
-      );
+    const shrinkOrder = [...sized].sort(
+      (a, b) =>
+        b.element.priority -
+        a.element.priority
+    );
 
-    for (
-      const item of shrinkOrder
-    ) {
-      if (
-        remainingShrink <=
-        EPSILON
-      ) {
+    for (const item of shrinkOrder) {
+      if (remainingShrink <= EPSILON) {
         break;
       }
 
-      const shrinkable =
-        Math.max(
-          0,
-          item.size.height -
-            item.minimum.height
-        );
+      const shrinkable = Math.max(
+        0,
+        item.size.height - item.minimum.height
+      );
 
-      const amount =
-        Math.min(
-          shrinkable,
-          remainingShrink
-        );
+      const amount = Math.min(
+        shrinkable,
+        remainingShrink
+      );
 
-      item.size.height -=
-        amount;
-
-      remainingShrink -=
-        amount;
+      item.size.height -= amount;
+      remainingShrink -= amount;
     }
 
-    if (
-      remainingShrink >
-      EPSILON
-    ) {
+    if (remainingShrink > EPSILON) {
       return null;
     }
 
     const totalHeight =
       sized.reduce(
         (total, item) =>
-          total +
-          item.size.height,
+          total + item.size.height,
         0
       ) + totalGap;
 
@@ -2385,99 +1652,69 @@ function resolveAdaptiveLandscape(
       area.y +
       Math.max(
         0,
-        (
-          area.height -
-          totalHeight
-        ) / 2
+        (area.height - totalHeight) / 2
       );
 
-    return sized.map(
-      (item) => {
-        const width = clamp(
-          item.size.width,
-          Math.min(
-            item.minimum.width,
-            column.width
-          ),
-          column.width
-        );
+    return sized.map((item) => {
+      const width = clamp(
+        item.size.width,
+        Math.min(item.minimum.width, column.width),
+        column.width
+      );
 
-        const height = clamp(
-          item.size.height,
-          Math.min(
-            item.minimum.height,
-            area.height
-          ),
-          area.height
-        );
+      const height = clamp(
+        item.size.height,
+        Math.min(item.minimum.height, area.height),
+        area.height
+      );
 
-        const x = clamp(
-          column.x +
-            (
-              column.width -
-              width
-            ) / 2,
-          area.x,
-          area.x +
-            area.width -
-            width
-        );
+      const x = clamp(
+        column.x +
+          (column.width - width) / 2,
+        area.x,
+        area.x + area.width - width
+      );
 
-        const safeY = clamp(
-          y,
-          area.y,
-          area.y +
-            area.height -
-            height
-        );
+      const safeY = clamp(
+        y,
+        area.y,
+        area.y + area.height - height
+      );
 
-        const resolved =
-          createResolvedElement(
-            item.element,
-            {
-              x,
-              y: safeY,
-              width,
-              height,
-            },
-            surface
-          );
+      const resolved = createResolvedElement(
+        item.element,
+        {
+          x,
+          y: safeY,
+          width,
+          height,
+        },
+        surface
+      );
 
-        y =
-          safeY +
-          height +
-          GAP;
-
-        return resolved;
-      }
-    );
+      y = safeY + height + GAP;
+      return resolved;
+    });
   };
 
-  if (
-    informationColumn
-  ) {
-    const resolvedInformation =
-      resolveColumn(
-        informationSizes,
-        informationColumn
-      );
+  if (informationColumn) {
+    const resolvedInformation = resolveColumn(
+      informationSizes,
+      informationColumn
+    );
 
     if (!resolvedInformation) {
       return null;
     }
 
-    result.push(
-      ...resolvedInformation
-    );
+    result.push(...resolvedInformation);
   }
 
   const heroHeight = clamp(
-    area.height *
-      heroPreferred.height,
+    area.height * heroPreferred.height,
     Math.min(
       Math.max(
-        area.height *
-          heroMinimum.height,
+        area.height * heroMinimum.height,
         heroPhysical.height
       ),
       area.height
@@ -2485,38 +1722,27 @@ function resolveAdaptiveLandscape(
     area.height
   );
 
-  const heroResolvedWidth =
-    clamp(
-      heroWidth,
-      Math.min(
-        heroMinimumWidth,
-        heroColumn.width
-      ),
+  const heroResolvedWidth = clamp(
+    heroWidth,
+    Math.min(
+      heroMinimumWidth,
       heroColumn.width
-    );
+    ),
+    heroColumn.width
+  );
 
   const heroX = clamp(
     heroColumn.x +
-      (
-        heroColumn.width -
-        heroResolvedWidth
-      ) / 2,
+      (heroColumn.width - heroResolvedWidth) / 2,
     area.x,
-    area.x +
-      area.width -
-      heroResolvedWidth
+    area.x + area.width - heroResolvedWidth
   );
 
   const heroY = clamp(
     area.y +
-      (
-        area.height -
-        heroHeight
-      ) / 2,
+      (area.height - heroHeight) / 2,
     area.y,
-    area.y +
-      area.height -
-      heroHeight
+    area.y + area.height - heroHeight
   );
 
   result.push(
@@ -2525,8 +1751,7 @@ function resolveAdaptiveLandscape(
       {
         x: heroX,
         y: heroY,
-        width:
-          heroResolvedWidth,
+        width: heroResolvedWidth,
         height: heroHeight,
       },
       surface
@@ -2534,52 +1759,32 @@ function resolveAdaptiveLandscape(
   );
 
   if (actionColumn) {
-    const resolvedActions =
-      resolveColumn(
-        actionSizes,
-        actionColumn
-      );
+    const resolvedActions = resolveColumn(
+      actionSizes,
+      actionColumn
+    );
 
     if (!resolvedActions) {
       return null;
     }
 
-    result.push(
-      ...resolvedActions
-    );
+    result.push(...resolvedActions);
   }
 
-  const sorted =
-    [...result].sort(
-      (a, b) => {
-        if (
-          Math.abs(
-            a.box.x - b.box.x
-          ) > EPSILON
-        ) {
-          return (
-            a.box.x -
-            b.box.x
-          );
-        }
-
-        return (
-          a.box.y -
-          b.box.y
-        );
+  const sorted = [...result].sort(
+    (a, b) => {
+      if (Math.abs(a.box.x - b.box.x) > EPSILON) {
+        return a.box.x - b.box.x;
       }
-    );
+
+      return a.box.y - b.box.y;
+    }
+  );
 
   if (
-    sorted.length !==
-      elements.length ||
-    hasInvalidDimensions(
-      sorted
-    ) ||
-    !fitsWithinArea(
-      sorted,
-      area
-    ) ||
+    sorted.length !== elements.length ||
+    hasInvalidDimensions(sorted) ||
+    !fitsWithinArea(sorted, area) ||
     hasOverlap(sorted) ||
     !satisfiesPhysicalConstraints(
       sorted,
@@ -2603,48 +1808,38 @@ function resolveHorizontal(
   surface: SurfaceProfile
 ): ResolvedElement[] {
   if (surface.allowAdaptiveLandscapeComposition) {
-    const adaptive =
-      resolveAdaptiveLandscape(
-        elements,
-        area,
-        surface
-      );
+    const adaptive = resolveAdaptiveLandscape(
+      elements,
+      area,
+      surface
+    );
 
     if (adaptive) {
       return adaptive;
     }
   }
 
-  const regions =
-    createHorizontalRegions(
-      elements,
-      area,
-      surface
-    );
+  const regions = createHorizontalRegions(
+    elements,
+    area,
+    surface
+  );
 
   if (!regions) {
     return [];
   }
 
-  const hero =
-    elements.find(
-      (element) =>
-        element.role ===
-        "hero"
-    );
+  const hero = elements.find(
+    (element) => element.role === "hero"
+  );
 
   const information =
-    getInformationElements(
-      elements
-    );
+    getInformationElements(elements);
 
   const actions =
-    getActionElements(
-      elements
-    );
+    getActionElements(elements);
 
-  const result:
-    ResolvedElement[] = [];
+  const result: ResolvedElement[] = [];
 
   result.push(
     ...resolveInformationGroup(
@@ -2670,7 +1865,8 @@ function resolveHorizontal(
     const physicalMinimum =
       getMinimumPhysicalSize(
         hero,
-        surface
+        surface,
+        regions.hero.width
       );
 
     const heroMinimumWidth =
@@ -2682,59 +1878,41 @@ function resolveHorizontal(
 
     if (
       regions.hero.width <
-      heroMinimumWidth -
-        EPSILON
+      heroMinimumWidth - EPSILON
     ) {
       return [];
     }
 
-    const heroWidth =
-      clamp(
-        regions.hero.width,
-        heroMinimumWidth,
-        regions.hero.width
-      );
+    const heroWidth = clamp(
+      regions.hero.width,
+      heroMinimumWidth,
+      regions.hero.width
+    );
 
-    const heroHeight =
-      clamp(
+    const heroHeight = clamp(
+      area.height *
+        preferred.height,
+      Math.max(
         area.height *
-          preferred.height,
-        Math.max(
-          area.height *
-            minimum.height,
-          physicalMinimum.height
-        ),
-        area.height
-      );
+          minimum.height,
+        physicalMinimum.height
+      ),
+      area.height
+    );
 
     result.push({
       id: hero.id,
-
       box: {
-        x:
-          regions.hero.x,
-
+        x: regions.hero.x,
         y:
           regions.hero.y +
-          (
-            regions.hero.height -
-            heroHeight
-          ) / 2,
-
-        width:
-          heroWidth,
-
-        height:
-          heroHeight,
+          (regions.hero.height - heroHeight) / 2,
+        width: heroWidth,
+        height: heroHeight,
       },
-
       visible: true,
-
-      minTextSize:
-        undefined,
-
-      minTapTarget:
-        undefined,
+      minTextSize: undefined,
+      minTapTarget: undefined,
     });
   }
 
@@ -2754,12 +1932,9 @@ function resolveBalanced(
   area: UsableArea,
   surface: SurfaceProfile
 ): ResolvedElement[] {
-  const hero =
-    elements.find(
-      (element) =>
-        element.role ===
-        "hero"
-    );
+  const hero = elements.find(
+    (element) => element.role === "hero"
+  );
 
   if (!hero) {
     return resolveVertical(
@@ -2769,35 +1944,28 @@ function resolveBalanced(
     );
   }
 
-  const minimumCompositionWidth =
-    120;
-
-  const minimumCompositionHeight =
-    120;
+  const minimumCompositionWidth = 120;
+  const minimumCompositionHeight = 120;
 
   if (
-    area.width <
-      minimumCompositionWidth ||
-    area.height <
-      minimumCompositionHeight
+    area.width < minimumCompositionWidth ||
+    area.height < minimumCompositionHeight
   ) {
     return [];
   }
 
-  const heroRegionWidth =
-    clamp(
-      area.width * 0.46,
-      area.width * 0.32,
-      area.width * 0.55
-    );
+  const heroRegionWidth = clamp(
+    area.width * 0.46,
+    area.width * 0.32,
+    area.width * 0.55
+  );
 
-  const informationWidth =
-    Math.max(
-      1,
-      area.width -
-        heroRegionWidth -
-        GAP
-    );
+  const informationWidth = Math.max(
+    1,
+    area.width -
+      heroRegionWidth -
+      GAP
+  );
 
   const informationRegion = {
     x: area.x,
@@ -2811,24 +1979,16 @@ function resolveBalanced(
       area.x +
       informationWidth +
       GAP,
-
     y: area.y,
-
-    width:
-      heroRegionWidth,
-
+    width: heroRegionWidth,
     height: area.height,
   };
 
-  const nonHero =
-    elements.filter(
-      (element) =>
-        element.id !==
-        hero.id
-    );
+  const nonHero = elements.filter(
+    (element) => element.id !== hero.id
+  );
 
-  const result:
-    ResolvedElement[] = [];
+  const result: ResolvedElement[] = [];
 
   result.push(
     ...resolveInformationGroup(
@@ -2838,98 +1998,73 @@ function resolveBalanced(
     )
   );
 
-  if (
-    result.length !==
-    nonHero.length
-  ) {
+  if (result.length !== nonHero.length) {
     return [];
   }
 
-  const preferred =
-    getPreferredFraction(
-      hero,
-      "balanced"
-    );
+  const preferred = getPreferredFraction(
+    hero,
+    "balanced"
+  );
 
-  const minimum =
-    getMinimumFraction(
-      hero,
-      "balanced"
-    );
+  const minimum = getMinimumFraction(
+    hero,
+    "balanced"
+  );
 
   const physicalMinimum =
     getMinimumPhysicalSize(
       hero,
-      surface
+      surface,
+      heroRegion.width
     );
 
-  const heroMinimumWidth =
-    Math.max(
-      heroRegion.width *
-        minimum.width,
-      physicalMinimum.width
-    );
+  const heroMinimumWidth = Math.max(
+    heroRegion.width *
+      minimum.width,
+    physicalMinimum.width
+  );
 
   if (
     heroRegion.width <
-    heroMinimumWidth -
-      EPSILON
+    heroMinimumWidth - EPSILON
   ) {
     return [];
   }
 
-  const resolvedHeroWidth =
-    clamp(
-      heroRegion.width *
-        preferred.width,
-      heroMinimumWidth,
-      heroRegion.width
-    );
+  const resolvedHeroWidth = clamp(
+    heroRegion.width *
+      preferred.width,
+    heroMinimumWidth,
+    heroRegion.width
+  );
 
-  const heroHeight =
-    clamp(
+  const heroHeight = clamp(
+    area.height *
+      preferred.height,
+    Math.max(
       area.height *
-        preferred.height,
-      Math.max(
-        area.height *
-          minimum.height,
-        physicalMinimum.height
-      ),
-      area.height
-    );
+        minimum.height,
+      physicalMinimum.height
+    ),
+    area.height
+  );
 
   result.push({
     id: hero.id,
-
     box: {
       x:
         heroRegion.x +
-        (
-          heroRegion.width -
-          resolvedHeroWidth
-        ) / 2,
-
+        (heroRegion.width - resolvedHeroWidth) / 2,
       y:
         heroRegion.y +
-        (
-          heroRegion.height -
-          heroHeight
-        ) / 2,
-
-      width:
-        resolvedHeroWidth,
-
-      height:
-        heroHeight,
+        (heroRegion.height - heroHeight) / 2,
+      width: resolvedHeroWidth,
+      height: heroHeight,
     },
-
     visible: true,
-
-    minTextSize:
-      undefined,
-
-    minTapTarget:
-      undefined,
+    minTextSize: undefined,
+    minTapTarget: undefined,
   });
 
   return result;
@@ -2941,10 +2076,7 @@ function resolveVisibleElements(
   direction: LayoutDirection,
   surface: SurfaceProfile
 ): ResolvedElement[] {
-  if (
-    direction ===
-    "vertical"
-  ) {
+  if (direction === "vertical") {
     return resolveVertical(
       elements,
       area,
@@ -2952,10 +2084,7 @@ function resolveVisibleElements(
     );
   }
 
-  if (
-    direction ===
-    "horizontal"
-  ) {
+  if (direction === "horizontal") {
     return resolveHorizontal(
       elements,
       area,
@@ -2974,27 +2103,15 @@ export function resolveLayout(
   elements: AdElement[],
   surface: SurfaceProfile
 ): ResolvedLayout {
-  if (
-    elements.length === 0
-  ) {
+  if (elements.length === 0) {
     return {
       elements: [],
     };
   }
 
-  const area =
-    getUsableArea(
-      surface
-    );
-
-  const direction =
-    getLayoutDirection(
-      surface
-    );
-
-  let remaining =
-    [...elements];
-
+  const area = getUsableArea(surface);
+  const direction = getLayoutDirection(surface);
+  let remaining = [...elements];
   /*
    * Constraint-based degradation:
    *
@@ -3007,66 +2124,49 @@ export function resolveLayout(
    * This allows low-priority elements such as branding to
    * shrink before they are removed.
    */
-  while (
-    remaining.length > 0
-  ) {
-    const resolved =
-      resolveVisibleElements(
-        remaining,
-        area,
-        direction,
-        surface
-      );
+  while (remaining.length > 0) {
+    const resolved = resolveVisibleElements(
+      remaining,
+      area,
+      direction,
+      surface
+    );
 
-    const feasible =
-      isFeasible(
-        resolved,
-        remaining,
-        area,
-        surface
-      );
+    const feasible = isFeasible(
+      resolved,
+      remaining,
+      area,
+      surface
+    );
 
     if (feasible) {
-      const visibleIds =
-        new Set(
-          resolved.map(
-            (element) =>
-              element.id
-          )
-        );
+      const visibleIds = new Set(
+        resolved.map(
+          (element) => element.id
+        )
+      );
 
-      const hidden =
-        elements.filter(
-          (element) =>
-            !visibleIds.has(
-              element.id
-            )
-        );
+      const hidden = elements.filter(
+        (element) => !visibleIds.has(element.id)
+      );
 
       return {
         elements: [
           ...resolved,
-          ...createHiddenElements(
-            hidden
-          ),
+          ...createHiddenElements(hidden),
         ],
       };
     }
 
-    const next =
-      removeLowestPriority(
-        remaining
-      );
+    const next = removeLowestPriority(
+      remaining
+    );
 
-    if (
-      next.length >=
-      remaining.length
-    ) {
+    if (next.length >= remaining.length) {
       break;
     }
 
-    remaining =
-      next;
+    remaining = next;
   }
 
   /*
@@ -3075,34 +2175,22 @@ export function resolveLayout(
    * Keep the highest-priority element if the complete
    * composition cannot be resolved.
    */
-  if (
-    area.width > 0 &&
-    area.height > 0
-  ) {
-    const highestPriority =
-      [...elements].sort(
-        (a, b) =>
-          a.priority -
-          b.priority
-      )[0];
+  if (area.width > 0 && area.height > 0) {
+    const highestPriority = [...elements].sort(
+      (a, b) => a.priority - b.priority
+    )[0];
 
-    const fallback =
-      resolveVisibleElements(
-        [highestPriority],
-        area,
-        direction,
-        surface
-      );
+    const fallback = resolveVisibleElements(
+      [highestPriority],
+      area,
+      direction,
+      surface
+    );
 
     if (
       fallback.length > 0 &&
-      !hasInvalidDimensions(
-        fallback
-      ) &&
-      fitsWithinArea(
-        fallback,
-        area
-      ) &&
+      !hasInvalidDimensions(fallback) &&
+      fitsWithinArea(fallback, area) &&
       satisfiesPhysicalConstraints(
         fallback,
         [highestPriority],
@@ -3113,28 +2201,21 @@ export function resolveLayout(
         [highestPriority]
       )
     ) {
-      const hidden =
-        elements.filter(
-          (element) =>
-            element.id !==
-            highestPriority.id
-        );
+      const hidden = elements.filter(
+        (element) =>
+          element.id !== highestPriority.id
+      );
 
       return {
         elements: [
           ...fallback,
-          ...createHiddenElements(
-            hidden
-          ),
+          ...createHiddenElements(hidden),
         ],
       };
     }
   }
 
   return {
-    elements:
-      createHiddenElements(
-        elements
-      ),
+    elements: createHiddenElements(elements),
   };
 }

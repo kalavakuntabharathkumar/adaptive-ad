@@ -1,3 +1,4 @@
+
 interface Dimensions {
   width: number;
   height: number;
@@ -46,7 +47,7 @@ export const surfaces: Record<string, SurfaceProfile> = {
     height: 250,
     safeArea: { top: 0, right: 0, bottom: 0, left: 0 },
     viewingDistance: "far",
-    minTextSize: 24,
+    minTextSize: 20,
     allowAdaptiveLandscapeComposition: true,
   },
 
@@ -59,6 +60,15 @@ export const surfaces: Record<string, SurfaceProfile> = {
     viewingDistance: "near",
     minTextSize: 20,
   },
+  bharathSurface: {
+  width: 200,
+  height: 160,
+  safeArea: { top: 12, right: 12, bottom: 12, left: 12 },
+  minTapTarget: 56,
+  viewingDistance: "far",
+  minTextSize: 24,
+  touchOnly: true,
+},
 
   constraintTest: {
     width: 180,

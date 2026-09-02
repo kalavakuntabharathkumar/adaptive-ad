@@ -1,30 +1,37 @@
+
 import { resolveLayout } from "./resolver";
 import { surfaces } from "./surfaces";
 import { adSpec } from "./spec";
 
-function assert(
-  condition: boolean,
-  message: string
-): void {
+type Box = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type Surface = {
+  width: number;
+  height: number;
+  safeArea?: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  };
+  minTapTarget?: number;
+  minTextSize?: number;
+  touchOnly?: boolean;
+  allowAdaptiveLandscapeComposition?: boolean;
+};
+
+function assert(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(`TEST FAILED: ${message}`);
   }
 }
 
-function boxesOverlap(
-  first: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  },
-  second: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  }
-): boolean {
+function boxesOverlap(first: Box, second: Box): boolean {
   return (
     first.x < second.x + second.width &&
     first.x + first.width > second.x &&
@@ -33,99 +40,103 @@ function boxesOverlap(
   );
 }
 
-function validateSurface(
-  name: keyof typeof surfaces
-): void {
-  const surface = surfaces[name];
+function getVisibleElements(result: ReturnType<typeof resolveLayout>) {
+  return result.elements.filter((element) => element.visible);
+}
 
-  const result = resolveLayout(
-    adSpec.elements,
-    surface
+function getSafeArea(surface: Surface) {
+  return surface.safeArea ?? {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  };
+}
+
+function assertWithinSafeArea(
+  element: { box: Box },
+  surface: Surface,
+  message = ""
+): void {
+  const safeArea = getSafeArea(surface);
+  const right = surface.width - safeArea.right;
+  const bottom = surface.height - safeArea.bottom;
+  const { x, y, width, height } = element.box;
+
+  assert(
+    x >= safeArea.left,
+    `${message}element starts outside left safe area`
   );
+
+  assert(
+    y >= safeArea.top,
+    `${message}element starts outside top safe area`
+  );
+
+  assert(
+    x + width <= right,
+    `${message}element exceeds right safe area`
+  );
+
+  assert(
+    y + height <= bottom,
+    `${message}element exceeds bottom safe area`
+  );
+}
+
+function assertNoOverlap(
+  elements: { box: Box }[],
+  message: string
+): void {
+  for (let first = 0; first < elements.length; first++) {
+    for (let second = first + 1; second < elements.length; second++) {
+      assert(
+        !boxesOverlap(elements[first].box, elements[second].box),
+        message
+      );
+    }
+  }
+}
+
+function validateResolvedLayout(
+  result: ReturnType<typeof resolveLayout>,
+  surface: Surface,
+  message = ""
+): void {
+  const visible = getVisibleElements(result);
+
+  for (const element of result.elements) {
+    assert(
+      element.box.width >= 0,
+      `${message}width cannot be negative`
+    );
+
+    assert(
+      element.box.height >= 0,
+      `${message}height cannot be negative`
+    );
+  }
+
+  for (const element of visible) {
+    assertWithinSafeArea(element, surface, message);
+  }
+
+  assertNoOverlap(
+    visible,
+    `${message}visible elements should not overlap`
+  );
+}
+
+function validateSurface(name: keyof typeof surfaces): void {
+  const surface = surfaces[name];
+  const result = resolveLayout(adSpec.elements, surface);
 
   assert(
     result.elements.length > 0,
     `${name}: resolver should return elements`
   );
 
-  const safeArea = surface.safeArea ?? {
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-  };
-
-  const usableRight =
-    surface.width - safeArea.right;
-
-  const usableBottom =
-    surface.height - safeArea.bottom;
-
-  for (const element of result.elements) {
-    const {
-      x,
-      y,
-      width,
-      height,
-    } = element.box;
-
-    assert(
-      width >= 0,
-      `${name}: width cannot be negative`
-    );
-
-    assert(
-      height >= 0,
-      `${name}: height cannot be negative`
-    );
-
-    if (element.visible) {
-      assert(
-        x >= safeArea.left,
-        `${name}: element starts outside left safe area`
-      );
-
-      assert(
-        y >= safeArea.top,
-        `${name}: element starts outside top safe area`
-      );
-
-      assert(
-        x + width <= usableRight,
-        `${name}: element exceeds right safe area`
-      );
-
-      assert(
-        y + height <= usableBottom,
-        `${name}: element exceeds bottom safe area`
-      );
-    }
-  }
-
-  const visibleElements =
-    result.elements.filter(
-      (element) => element.visible
-    );
-
-  for (
-    let firstIndex = 0;
-    firstIndex < visibleElements.length;
-    firstIndex++
-  ) {
-    for (
-      let secondIndex = firstIndex + 1;
-      secondIndex < visibleElements.length;
-      secondIndex++
-    ) {
-      assert(
-        !boxesOverlap(
-          visibleElements[firstIndex].box,
-          visibleElements[secondIndex].box
-        ),
-        `${name}: visible elements should not overlap`
-      );
-    }
-  }
+  validateResolvedLayout(result, surface, `${name}: `);
 
   console.log(`PASS: ${name}`);
 }
@@ -136,19 +147,11 @@ function validatePortraitSurface(): void {
     surfaces.mobilePortrait
   );
 
-  const visibleElements =
-    result.elements.filter(
-      (element) => element.visible
-    );
+  const visible = getVisibleElements(result);
 
-  for (
-    let index = 1;
-    index < visibleElements.length;
-    index++
-  ) {
+  for (let index = 1; index < visible.length; index++) {
     assert(
-      visibleElements[index].box.y >=
-        visibleElements[index - 1].box.y,
+      visible[index].box.y >= visible[index - 1].box.y,
       "portrait layout should progress vertically"
     );
   }
@@ -162,19 +165,11 @@ function validateLandscapeSurface(): void {
     surfaces.mobileLandscape
   );
 
-  const visibleElements =
-    result.elements.filter(
-      (element) => element.visible
-    );
+  const visible = getVisibleElements(result);
 
-  for (
-    let index = 1;
-    index < visibleElements.length;
-    index++
-  ) {
+  for (let index = 1; index < visible.length; index++) {
     assert(
-      visibleElements[index].box.x >=
-        visibleElements[index - 1].box.x,
+      visible[index].box.x >= visible[index - 1].box.x,
       "landscape layout should progress horizontally"
     );
   }
@@ -183,7 +178,7 @@ function validateLandscapeSurface(): void {
 }
 
 function validateLandscapeAdaptiveComposition(): void {
-  const testSurfaces = [
+  const testSurfaces: Surface[] = [
     {
       width: 480,
       height: 320,
@@ -197,7 +192,6 @@ function validateLandscapeAdaptiveComposition(): void {
       minTextSize: 16,
       allowAdaptiveLandscapeComposition: true,
     },
-
     {
       width: 800,
       height: 320,
@@ -211,7 +205,6 @@ function validateLandscapeAdaptiveComposition(): void {
       minTextSize: 16,
       allowAdaptiveLandscapeComposition: true,
     },
-
     {
       width: 640,
       height: 240,
@@ -225,7 +218,6 @@ function validateLandscapeAdaptiveComposition(): void {
       minTextSize: 16,
       allowAdaptiveLandscapeComposition: true,
     },
-
     {
       width: 1200,
       height: 600,
@@ -242,112 +234,50 @@ function validateLandscapeAdaptiveComposition(): void {
   ];
 
   for (const surface of testSurfaces) {
-    const result = resolveLayout(
-      adSpec.elements,
-      surface
+    const result = resolveLayout(adSpec.elements, surface);
+
+    const logo = result.elements.find(
+      (element) => element.id === "logo"
     );
-
-    const visible =
-      result.elements.filter(
-        (element) => element.visible
-      );
-
-    const logo =
-      result.elements.find(
-        (element) => element.id === "logo"
-      );
 
     assert(
       logo?.visible === true,
       "feasible adaptive landscape should keep logo visible"
     );
 
-    const safeArea =
-      surface.safeArea;
-
-    const right =
-      surface.width - safeArea.right;
-
-    const bottom =
-      surface.height - safeArea.bottom;
-
-    for (const element of visible) {
-      assert(
-        element.box.x >= safeArea.left,
-        "adaptive landscape must respect left safe area"
-      );
-
-      assert(
-        element.box.y >= safeArea.top,
-        "adaptive landscape must respect top safe area"
-      );
-
-      assert(
-        element.box.x +
-          element.box.width <=
-          right,
-        "adaptive landscape must respect right safe area"
-      );
-
-      assert(
-        element.box.y +
-          element.box.height <=
-          bottom,
-        "adaptive landscape must respect bottom safe area"
-      );
-    }
-
-    for (
-      let first = 0;
-      first < visible.length;
-      first++
-    ) {
-      for (
-        let second = first + 1;
-        second < visible.length;
-        second++
-      ) {
-        assert(
-          !boxesOverlap(
-            visible[first].box,
-            visible[second].box
-          ),
-          "adaptive landscape elements must not overlap"
-        );
-      }
-    }
+    validateResolvedLayout(
+      result,
+      surface,
+      "adaptive landscape: "
+    );
   }
 
-  const tooSmall = resolveLayout(
-    adSpec.elements,
-    {
-      width: 100,
-      height: 80,
-      safeArea: {
-        top: 0,
-        right: 0,
-        bottom: 0,
-        left: 0,
-      },
-      minTapTarget: 44,
-      minTextSize: 16,
-      allowAdaptiveLandscapeComposition: true,
-    }
+  const tooSmall: Surface = {
+    width: 100,
+    height: 80,
+    safeArea: {
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+    },
+    minTapTarget: 44,
+    minTextSize: 16,
+    allowAdaptiveLandscapeComposition: true,
+  };
+
+  const result = resolveLayout(adSpec.elements, tooSmall);
+
+  const logo = result.elements.find(
+    (element) => element.id === "logo"
   );
 
-  const smallLogo =
-    tooSmall.elements.find(
-      (element) => element.id === "logo"
-    );
-
   assert(
-    smallLogo?.visible === false,
+    logo?.visible === false,
     "genuinely infeasible landscape should still remove the logo"
   );
 
-  console.log(
-    "PASS: adaptive landscape composition"
-  );
+  console.log("PASS: adaptive landscape composition");
 }
 
 function validateBalancedSurface(): void {
@@ -365,10 +295,7 @@ function validateBalancedSurface(): void {
 }
 
 function validateEmptyLayout(): void {
-  const result = resolveLayout(
-    [],
-    surfaces.mobilePortrait
-  );
+  const result = resolveLayout([], surfaces.mobilePortrait);
 
   assert(
     result.elements.length === 0,
@@ -400,14 +327,11 @@ function validateSingleElement(): void {
 function validateManyElements(): void {
   const manyElements = [
     ...adSpec.elements,
-
-    ...adSpec.elements.map(
-      (element, index) => ({
-        ...element,
-        id: `${element.id}-copy-${index}`,
-        priority: 3 as const,
-      })
-    ),
+    ...adSpec.elements.map((element, index) => ({
+      ...element,
+      id: `${element.id}-copy-${index}`,
+      priority: 3 as const,
+    })),
   ];
 
   const result = resolveLayout(
@@ -424,40 +348,32 @@ function validateManyElements(): void {
 }
 
 function validateNoSafeArea(): void {
-  const surfaceWithoutSafeArea = {
+  const surface: Surface = {
     width: 1080,
     height: 1080,
   };
 
-  const result = resolveLayout(
-    adSpec.elements,
-    surfaceWithoutSafeArea
-  );
+  const result = resolveLayout(adSpec.elements, surface);
 
-  for (const element of result.elements) {
-    if (element.visible) {
-      assert(
-        element.box.x >= 0,
-        "no-safe-area surface should allow x >= 0"
-      );
+  for (const element of getVisibleElements(result)) {
+    assert(
+      element.box.x >= 0,
+      "no-safe-area surface should allow x >= 0"
+    );
 
-      assert(
-        element.box.y >= 0,
-        "no-safe-area surface should allow y >= 0"
-      );
-    }
+    assert(
+      element.box.y >= 0,
+      "no-safe-area surface should allow y >= 0"
+    );
   }
 
-  console.log(
-    "PASS: no safe-area surface"
-  );
+  console.log("PASS: no safe-area surface");
 }
 
 function validateMinimumSizes(): void {
-  const verySmallSurface = {
+  const surface: Surface = {
     width: 100,
     height: 100,
-
     safeArea: {
       top: 0,
       right: 0,
@@ -466,10 +382,7 @@ function validateMinimumSizes(): void {
     },
   };
 
-  const result = resolveLayout(
-    adSpec.elements,
-    verySmallSurface
-  );
+  const result = resolveLayout(adSpec.elements, surface);
 
   for (const element of result.elements) {
     assert(
@@ -487,10 +400,9 @@ function validateMinimumSizes(): void {
 }
 
 function validatePriorityDegradation(): void {
-  const verySmallSurface = {
+  const surface: Surface = {
     width: 100,
     height: 100,
-
     safeArea: {
       top: 0,
       right: 0,
@@ -499,25 +411,15 @@ function validatePriorityDegradation(): void {
     },
   };
 
-  const result = resolveLayout(
-    adSpec.elements,
-    verySmallSurface
-  );
-
-  const visibleElements =
-    result.elements.filter(
-      (element) => element.visible
-    );
+  const result = resolveLayout(adSpec.elements, surface);
+  const visible = getVisibleElements(result);
 
   assert(
-    visibleElements.length <
-      adSpec.elements.length,
+    visible.length < adSpec.elements.length,
     "very small surface should trigger priority degradation"
   );
 
-  console.log(
-    "PASS: priority degradation"
-  );
+  console.log("PASS: priority degradation");
 }
 
 function validateNoNegativeCoordinates(): void {
@@ -529,29 +431,22 @@ function validateNoNegativeCoordinates(): void {
   ];
 
   for (const surface of testSurfaces) {
-    const result = resolveLayout(
-      adSpec.elements,
-      surface
-    );
+    for (const element of getVisibleElements(
+      resolveLayout(adSpec.elements, surface)
+    )) {
+      assert(
+        element.box.x >= 0,
+        "visible element cannot have negative x"
+      );
 
-    for (const element of result.elements) {
-      if (element.visible) {
-        assert(
-          element.box.x >= 0,
-          "visible element cannot have negative x"
-        );
-
-        assert(
-          element.box.y >= 0,
-          "visible element cannot have negative y"
-        );
-      }
+      assert(
+        element.box.y >= 0,
+        "visible element cannot have negative y"
+      );
     }
   }
 
-  console.log(
-    "PASS: no negative coordinates"
-  );
+  console.log("PASS: no negative coordinates");
 }
 
 function validateNoOverflow(): void {
@@ -563,37 +458,13 @@ function validateNoOverflow(): void {
   ];
 
   for (const surface of testSurfaces) {
-    const safeArea = surface.safeArea ?? {
-      top: 0,
-      right: 0,
-      bottom: 0,
-      left: 0,
-    };
+    const result = resolveLayout(adSpec.elements, surface);
 
-    const result = resolveLayout(
-      adSpec.elements,
-      surface
-    );
-
-    for (const element of result.elements) {
-      if (!element.visible) {
-        continue;
-      }
-
-      assert(
-        element.box.x +
-          element.box.width <=
-          surface.width -
-            safeArea.right,
-        "visible element must not overflow horizontally"
-      );
-
-      assert(
-        element.box.y +
-          element.box.height <=
-          surface.height -
-            safeArea.bottom,
-        "visible element must not overflow vertically"
+    for (const element of getVisibleElements(result)) {
+      assertWithinSafeArea(
+        element,
+        surface,
+        "overflow: "
       );
     }
   }
@@ -601,14 +472,6 @@ function validateNoOverflow(): void {
   console.log("PASS: no overflow");
 }
 
-/*
- * Explicit no-overlap validation.
- *
- * This is kept separate from the individual surface
- * tests so that the final test output clearly proves
- * that the resolver does not create overlapping
- * visible elements.
- */
 function validateNoOverlap(): void {
   const testSurfaces = [
     surfaces.mobilePortrait,
@@ -618,64 +481,31 @@ function validateNoOverlap(): void {
   ];
 
   for (const surface of testSurfaces) {
-    const result = resolveLayout(
-      adSpec.elements,
-      surface
+    const visible = getVisibleElements(
+      resolveLayout(adSpec.elements, surface)
     );
 
-    const visibleElements =
-      result.elements.filter(
-        (element) => element.visible
-      );
-
-    for (
-      let firstIndex = 0;
-      firstIndex < visibleElements.length;
-      firstIndex++
-    ) {
-      for (
-        let secondIndex = firstIndex + 1;
-        secondIndex < visibleElements.length;
-        secondIndex++
-      ) {
-        assert(
-          !boxesOverlap(
-            visibleElements[firstIndex].box,
-            visibleElements[secondIndex].box
-          ),
-          "visible elements must not overlap"
-        );
-      }
-    }
+    assertNoOverlap(
+      visible,
+      "visible elements must not overlap"
+    );
   }
 
   console.log("PASS: no overlap");
 }
 
-/*
- * Explicit touch-only validation.
- *
- * `touchOnly` must actually constrain the resolver, not just be
- * stored and ignored. A touch-only surface that omits an explicit
- * `minTapTarget` should still force buttons to a physically
- * tappable minimum size (the resolver's default touch minimum),
- * and that minimum should be reflected both in the resolved box
- * and in the `minTapTarget` the renderer receives.
- */
 function validateTouchOnlySurface(): void {
   const DEFAULT_TOUCH_MIN_TARGET = 44;
 
-  const touchOnlyNoExplicitTarget = {
+  const touchOnlyNoExplicitTarget: Surface = {
     width: 1080,
     height: 1080,
-
     safeArea: {
       top: 24,
       right: 24,
       bottom: 24,
       left: 24,
     },
-
     touchOnly: true,
   };
 
@@ -695,35 +525,30 @@ function validateTouchOnlySurface(): void {
 
   assert(
     cta !== undefined &&
-      cta.box.width >=
-        DEFAULT_TOUCH_MIN_TARGET,
-    "touch-only surface without an explicit minTapTarget must still enforce a minimum tap width on buttons"
+      cta.box.width >= DEFAULT_TOUCH_MIN_TARGET,
+    "touch-only surface without an explicit minTapTarget must enforce minimum tap width"
   );
 
   assert(
     cta !== undefined &&
-      cta.box.height >=
-        DEFAULT_TOUCH_MIN_TARGET,
-    "touch-only surface without an explicit minTapTarget must still enforce a minimum tap height on buttons"
+      cta.box.height >= DEFAULT_TOUCH_MIN_TARGET,
+    "touch-only surface without an explicit minTapTarget must enforce minimum tap height"
   );
 
   assert(
-    cta?.minTapTarget ===
-      DEFAULT_TOUCH_MIN_TARGET,
-    "touch-only surface without an explicit minTapTarget should report the default touch minimum to the renderer"
+    cta?.minTapTarget === DEFAULT_TOUCH_MIN_TARGET,
+    "touch-only surface without an explicit minTapTarget should report the default touch minimum"
   );
 
-  const touchOnlyWithExplicitTarget = {
+  const touchOnlyWithExplicitTarget: Surface = {
     width: 1080,
     height: 1080,
-
     safeArea: {
       top: 24,
       right: 24,
       bottom: 24,
       left: 24,
     },
-
     touchOnly: true,
     minTapTarget: 60,
   };
@@ -733,20 +558,18 @@ function validateTouchOnlySurface(): void {
     touchOnlyWithExplicitTarget
   );
 
-  const explicitCta =
-    explicitResult.elements.find(
-      (element) => element.id === "cta"
-    );
+  const explicitCta = explicitResult.elements.find(
+    (element) => element.id === "cta"
+  );
 
   assert(
     explicitCta?.minTapTarget === 60,
-    "an explicit minTapTarget must take priority over the touch-only default"
+    "explicit minTapTarget must override touch-only default"
   );
 
-  const notTouchOnly = {
+  const notTouchOnly: Surface = {
     width: 1080,
     height: 1080,
-
     safeArea: {
       top: 24,
       right: 24,
@@ -766,113 +589,42 @@ function validateTouchOnlySurface(): void {
     );
 
   assert(
-    notTouchOnlyCta?.minTapTarget ===
-      undefined,
-    "a surface that is neither touch-only nor given an explicit minTapTarget should not invent a tap-target constraint"
+    notTouchOnlyCta?.minTapTarget === undefined,
+    "non-touch surface without explicit minTapTarget should not invent a tap constraint"
   );
 
   console.log("PASS: touch-only surface");
 }
 
-/*
- * Explicit unknown fifth-surface validation.
- *
- * This surface is intentionally NOT taken from the
- * predefined surfaces object. It proves that the
- * resolver can consume a new surface profile without
- * requiring a new surface-specific layout branch.
- */
 function validateUnknownFifthSurface(): void {
-  const unknownFifthSurface = {
+  const surface: Surface = {
     width: 700,
     height: 300,
-
     safeArea: {
       top: 10,
       right: 10,
       bottom: 10,
       left: 10,
     },
-
     minTextSize: 28,
     minTapTarget: 48,
   };
 
-  const result = resolveLayout(
-    adSpec.elements,
-    unknownFifthSurface
-  );
+  const result = resolveLayout(adSpec.elements, surface);
 
   assert(
     result.elements.length > 0,
     "unknown fifth surface should produce a layout"
   );
 
-  for (const element of result.elements) {
-    if (!element.visible) {
-      continue;
-    }
-
-    assert(
-      element.box.x >=
-        unknownFifthSurface.safeArea.left,
-      "unknown fifth surface must respect left safe area"
-    );
-
-    assert(
-      element.box.y >=
-        unknownFifthSurface.safeArea.top,
-      "unknown fifth surface must respect top safe area"
-    );
-
-    assert(
-      element.box.x +
-        element.box.width <=
-        unknownFifthSurface.width -
-          unknownFifthSurface.safeArea.right,
-      "unknown fifth surface must respect right safe area"
-    );
-
-    assert(
-      element.box.y +
-        element.box.height <=
-        unknownFifthSurface.height -
-          unknownFifthSurface.safeArea.bottom,
-      "unknown fifth surface must respect bottom safe area"
-    );
-  }
-
-  const visibleElements =
-    result.elements.filter(
-      (element) => element.visible
-    );
-
-  for (
-    let firstIndex = 0;
-    firstIndex < visibleElements.length;
-    firstIndex++
-  ) {
-    for (
-      let secondIndex = firstIndex + 1;
-      secondIndex < visibleElements.length;
-      secondIndex++
-    ) {
-      assert(
-        !boxesOverlap(
-          visibleElements[firstIndex].box,
-          visibleElements[secondIndex].box
-        ),
-        "unknown fifth surface must not contain overlapping elements"
-      );
-    }
-  }
+  validateResolvedLayout(
+    result,
+    surface,
+    "unknown fifth surface: "
+  );
 
   console.log("PASS: unknown fifth surface");
 }
-
-/*
- * Run all validation checks.
- */
 
 validateSurface("mobilePortrait");
 validateSurface("mobileLandscape");
@@ -899,6 +651,4 @@ validateNoOverlap();
 validateTouchOnlySurface();
 validateUnknownFifthSurface();
 
-console.log(
-  "All resolver validation checks passed."
-);
+console.log("All resolver validation checks passed.");
