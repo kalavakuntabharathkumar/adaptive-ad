@@ -60,22 +60,4 @@ export const surfaces: Record<string, SurfaceProfile> = {
     viewingDistance: "near",
     minTextSize: 20,
   },
-  bharathSurface: {
-  width: 200,
-  height: 160,
-  safeArea: { top: 12, right: 12, bottom: 12, left: 12 },
-  minTapTarget: 56,
-  viewingDistance: "far",
-  minTextSize: 24,
-  touchOnly: true,
-},
-
-  constraintTest: {
-    width: 180,
-    height: 140,
-    safeArea: { top: 8, right: 8, bottom: 8, left: 8 },
-    minTapTarget: 44,
-    viewingDistance: "near",
-    minTextSize: 16,
-  },
 };
